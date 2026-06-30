@@ -681,7 +681,7 @@ tbody tr:hover {
 <script>
 // ── credentials (obfuscated) ──
 function _d(h){return h.match(/../g).map(b=>String.fromCharCode(parseInt(b,16)^42)).join('');}
-const GS_URL = _d('425e5e5a59100505594958435a5e044d45454d464f0449454705474b495845590559056b614c53494852484875460745461b5c5378195e4242617c5c7273591f07076b41596f486969621b6f4d666d07665c5f6f1a70647f646b6d5c7559487c5d7b4d407b60686d664d6f054f524f49');
+const GS_URL = _d('425e5e5a59100505594958435a5e044d45454d464f0449454705474b495845590559056b614c534948531b1a6c4167446f41424d5b13504b796d535e50795b651b415a1b4f5c636e1f1d5d1e0768581919415812664e645062755f6f79754e694f4465526c7f4c1f5c4070054f524f49');
 const API_TOKEN = _d('797a67756c6f6f6e6763666675181a181e');
 const IMGBB_KEY = '';
 
@@ -2997,8 +2997,8 @@ function undoDelete(){
 
 
 // ===== แก้ไข/ลบประวัติรายวัน =====
-function deleteDailyEntry(date, entryIdx){
-  if(!confirm('ลบรายการนี้? (สามารถกด Undo ได้ภายใน 5 วินาที)')) return;
+async function deleteDailyEntry(date, entryIdx){
+  if(!confirm('ลบรายการนี้?')) return;
   const day = MOCK_DAILY.find(d=>d.date===date);
   if(!day) return;
   // นับ index จาก normEntries (หลัง normalize)
@@ -3010,10 +3010,34 @@ function deleteDailyEntry(date, entryIdx){
     const ne = normEntries[i];
     return ne===realEntry || (ne.no===realEntry.no && ne.location===realEntry.location && ne.qty===realEntry.qty && ne.unit===realEntry.unit);
   });
-  if(realIdx > -1){
-    const deleted = day.entries.splice(realIdx, 1)[0];
-    pushUndo('deleteEntry', deleted, date);
+  if(realIdx === -1) return;
+
+  const deleted = day.entries.splice(realIdx, 1)[0];
+
+  // sync ไป Google Sheet — ส่ง entries ที่เหลือของวันนั้นไปเขียนทับใหม่
+  try {
+    if(day.entries.length > 0){
+      const payload = {
+        action: 'saveDaily', token: API_TOKEN,
+        date: day.date, date_th: day.date_th,
+        recorded_by: day.recorded_by, entries: day.entries,
+      };
+      const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify(payload) });
+      const json = await res.json();
+      if(!json.ok) throw new Error(json.error || 'ลบไม่สำเร็จ');
+    } else {
+      // ถ้าไม่มี entry เหลือเลยในวันนั้น ส่ง action deleteDailyDate เพื่อลบทั้งวันออกจาก Sheet
+      const payload = { action: 'deleteDailyDate', token: API_TOKEN, date: day.date };
+      const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify(payload) });
+      const json = await res.json();
+      if(!json.ok) throw new Error(json.error || 'ลบไม่สำเร็จ');
+      MOCK_DAILY.splice(MOCK_DAILY.indexOf(day), 1);
+    }
+    showToast('✅ ลบรายการเรียบร้อย');
+  } catch(e) {
+    showToast('⚠️ ลบในเครื่องแล้ว แต่ sync Google Sheet ไม่สำเร็จ: ' + e.message, 'error');
   }
+
   _clearStockCache();
   _clearDailyIndex();
   _saveDailyData();
