@@ -717,6 +717,10 @@ const ITEMS_DATA = [{"code": "A001", "no": "010101", "desc": "Broken Rice", "pkg
 async function loadFromSheet(){
   showLoading(true);
   showSpinner(true);
+  const loader = document.getElementById('pageLoader');
+  const loaderMsg = document.getElementById('pageLoaderMsg');
+  if(loader){ loader.style.display = 'flex'; }
+  if(loaderMsg){ loaderMsg.textContent = 'กำลังโหลดข้อมูลจาก Google Sheet...'; }
   try {
     const res = await fetch(GS_URL + '?action=getItems&token=' + API_TOKEN);
     const json = await res.json();
@@ -756,6 +760,7 @@ async function loadFromSheet(){
   } finally {
     showLoading(false);
     showSpinner(false);
+    if(loader){ loader.style.display = 'none'; }
   }
 }
 
@@ -3330,6 +3335,10 @@ function getTotalKgByNo(no){
 
 // ===== Login =====
 let currentUser = '';
+try {
+  const savedUser = localStorage.getItem('spm_current_user');
+  if(savedUser) currentUser = savedUser;
+} catch(e) {}
 
 function changeUser(){
   if(confirm('เปลี่ยนชื่อผู้ใช้งาน?')){
@@ -3344,6 +3353,7 @@ function doLogin(){
   const name = inp ? inp.value.trim() : '';
   if(!name){ if(inp){ inp.style.borderColor='#ff4444'; inp.focus(); } return; }
   currentUser = name;
+  try { localStorage.setItem('spm_current_user', name); } catch(e) {}
   const overlay = document.getElementById('loginOverlay');
   if(overlay) overlay.style.display = 'none';
   const ud = document.getElementById('userDisplay');
@@ -3765,6 +3775,7 @@ function _resetSession(){
 
 function _doSessionLogout(){
   currentUser = '';
+  try { localStorage.removeItem('spm_current_user'); } catch(e) {}
   if(window._sessionCountdownTick){ clearInterval(window._sessionCountdownTick); }
   const ud = document.getElementById('userDisplay');
   if(ud) ud.style.display = 'none';
@@ -4300,7 +4311,30 @@ function _clearAllDailyData(){
   showPage('daily');
 }
 
-loadFromSheet();
+// ===== Init: ถ้ามี currentUser ที่ login ไว้แล้ว ให้ skip หน้า login =====
+if(currentUser){
+  const overlay = document.getElementById('loginOverlay');
+  if(overlay) overlay.style.display = 'none';
+  const ud = document.getElementById('userDisplay');
+  if(ud){
+    ud.textContent = '👤 ' + currentUser;
+    ud.style.display = 'inline-block';
+    ud.style.cursor = 'pointer';
+    ud.title = 'คลิกเพื่อดูคำแนะนำอีกครั้ง';
+    ud.onclick = _resetOnboarding;
+  }
+  _resetSession();
+}
+
+loadFromSheet().then(() => {
+  if(currentUser){
+    const main = document.getElementById('mainContent');
+    if(main){
+      try { renderDashboard(); }
+      catch(e) { main.innerHTML = '<div style="padding:40px;color:red">Error: '+e.message+'</div>'; }
+    }
+  }
+});
 
 </script>
 
