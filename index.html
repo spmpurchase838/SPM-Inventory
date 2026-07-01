@@ -1187,7 +1187,7 @@ function renderListTable(slice){
         '<td>'+(escHtml(r.desc)||'-')+'</td>' +
         '<td>'+(escHtml(r.pkg)||'-')+'</td>' +
         '<td>'+(r.col2||'-')+'</td>' +
-        '<td style="font-size:12px;color:#666">'+(r.cond||'-')+'</td>' +
+        '<td style="font-size:12px;color:#666">'+(escHtml(r.cond)||'-')+'</td>' +
 
         '<td style="font-size:12px;color:#1a5276;font-weight:700">'+qtyCell+'</td>' +
         '<td style="font-size:12px;color:#1a5276;font-weight:700">'+kgCell+'</td>' +
@@ -1251,7 +1251,7 @@ function formHTML(r={}){
     {val:'drum', label:'ถัง (Drum)'},
   ];
   const pkgOpts = pkgMap.map(p=>`<option value="${p.val}" ${r.pkg===p.val?'selected':''}>${p.label}</option>`).join('');
-  const condOpts = ['','รับน้ำหนักตามใบชั่ง','รับน้ำหนักตามบิล','อื่นๆ'].map(c=>`<option value="${c}" ${r.cond===c?'selected':''}>${c||'- ไม่ระบุ -'}</option>`).join('');
+  const condOpts = ['','รับน้ำหนักตามใบชั่ง','รับน้ำหนักตามบิล','อื่นๆ'].map(c=>`<option value="${c}" ${escHtml(r.cond)===c?'selected':''}>${c||'- ไม่ระบุ -'}</option>`).join('');
 
   // สร้าง No. options ตาม code ที่เลือก
   const noOpts = r.code
@@ -1430,6 +1430,8 @@ let _saveNewInProgress = false;
 async function saveNew(){
   if(_saveNewInProgress) return;
   _saveNewInProgress = true;
+  // helper reset flag เมื่อ validation fail
+  const _resetSaveFlag = () => { _saveNewInProgress = false; };
   const saveBtn = document.querySelector('.modal-footer .btn-primary');
   if(saveBtn){ saveBtn.disabled = true; saveBtn.textContent = 'กำลังบันทึก...'; }
   try {
@@ -1495,8 +1497,10 @@ async function saveNew(){
   window.scrollTo({top:0, behavior:'smooth'});
   } catch(e) {
     showToast('❌ บันทึกไม่สำเร็จ: ' + e.message, 'error');
-    const saveBtn = document.querySelector('.modal-footer .btn-primary');
-    if(saveBtn){ saveBtn.disabled=false; saveBtn.textContent='บันทึก'; }
+  } finally {
+    _saveNewInProgress = false;
+    const _sb = document.querySelector('.modal-footer .btn-primary');
+    if(_sb){ _sb.disabled=false; _sb.textContent='บันทึก'; }
   }
 }
 
@@ -1665,7 +1669,7 @@ function showDetail(id){
     </div>` : '';
 
   document.getElementById('modalBox').innerHTML = `
-    <h2>${r.no} — ${r.desc||'(ไม่มีชื่อ)'}</h2>
+    <h2>${r.no} — ${escHtml(r.desc)||'(ไม่มีชื่อ)'}</h2>
     ${r.image?`<div style="margin-bottom:14px"><img src="${r.image}" style="max-width:100%;max-height:150px;border-radius:8px;border:1px solid #eee"></div>`:''}
     <dl class="detail-grid">
       <dt>Code</dt><dd>${getBadge(r.code)} ${CODE_MAP[r.code]||''}</dd>
@@ -3626,7 +3630,7 @@ window._selectMonth = (ym) => {
     const cards=Object.values(sm).map(s=>{
       const bc=s.code[0]==='A'?'ba':s.code[0]==='B'?'bb':'bc';
       const skg=r2(s.rows.reduce((a,r)=>{const k=convertToKg(r.qty,r.unit,r.no);return r2(a+(k!==null?k:r.qty));},0));
-      const rows=s.rows.map(r=>'<tr style="border-bottom:1px solid #f5f5f5"><td style="padding:4px 10px">'+(r.location||'-')+'</td><td style="padding:4px 10px;color:#777">'+(r.storage||'-')+'</td><td style="padding:4px 10px;text-align:right;font-weight:600;color:#2874a6">'+formatQty(r.qty,r.unit,r.no)+'</td></tr>').join('');
+      const rows=s.rows.map(r=>'<tr style="border-bottom:1px solid #f5f5f5"><td style="padding:4px 10px">'+(escHtml(r.location)||'-')+'</td><td style="padding:4px 10px;color:#777">'+(escHtml(r.storage)||'-')+'</td><td style="padding:4px 10px;text-align:right;font-weight:600;color:#2874a6">'+formatQty(r.qty,r.unit,r.no)+'</td></tr>').join('');
       return '<div style="background:white;border-radius:6px;padding:12px;margin-bottom:6px;border:1px solid #eef2f7">'+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
         '<div><span class="badge '+bc+'" style="margin-right:6px">'+s.code+'</span>'+
@@ -3680,7 +3684,7 @@ function globalSearch(q){
   q = q.trim().toLowerCase();
   if(!q){ wrap.style.display='none'; return; }
 
-  const all = db.filter(r => r.no.toLowerCase().includes(q) || r.desc.toLowerCase().includes(q));
+  const all = db.filter(r => r.no.toLowerCase().includes(q) || escHtml(r.desc).toLowerCase().includes(q));
   const matches = all.slice(0, 8);
 
   if(!matches.length){
