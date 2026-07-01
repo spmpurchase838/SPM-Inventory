@@ -681,7 +681,7 @@ tbody tr:hover {
 <script>
 // ── credentials (obfuscated) ──
 function _d(h){return h.match(/../g).map(b=>String.fromCharCode(parseInt(b,16)^42)).join('');}
-const GS_URL = _d('425e5e5a59100505594958435a5e044d45454d464f0449454705474b495845590559056b614c53494853724f4366625d6b4c41497b6f4350701860434f68617e5d687567407561531b491b781870526c4c797d737b48787e7366655b58684c4f5a694e5c1f135e70624959054f524f49');
+const GS_URL = _d('425e5e5a59100505594958435a5e044d45454d464f0449454705474b495845590559056b614c534948527319191368666670585359786e184f65611278684b6b75787c7d7d1d121f7c52457e466d4c7b61704f4f72637a441a7e626c4649684149721c6f4c7f12466c5f5b054f524f49');
 const API_TOKEN = _d('797a67756c6f6f6e6763666675181a181e');
 const IMGBB_KEY = '';
 
@@ -1399,9 +1399,13 @@ async function postSheet(payload){
   }
   try {
     const body = {...payload, token: API_TOKEN};
-    const encoded = encodeURIComponent(JSON.stringify(body));
-    const res = await fetch(GS_URL + '?payload=' + encoded, {
-      signal: AbortSignal.timeout(15000)
+    // ส่ง Content-Type: text/plain เพื่อ bypass CORS preflight
+    const res = await fetch(GS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(body),
+      redirect: 'follow',
+      signal: AbortSignal.timeout(15000),
     });
     const j = await res.json();
     if(j.result === 'unauthorized'){
@@ -1482,7 +1486,12 @@ async function saveNew(){
     'สถานที่จัดเก็บ': newItem.storage,
     'หมายเหตุ': newItem.notes,
   };
-  const res = await fetch(GS_URL + '?payload=' + encodeURIComponent(JSON.stringify(payload)));
+  const res = await fetch(GS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload),
+      redirect: 'follow',
+    });
   const json = await res.json();
   if(!json.ok) throw new Error(json.error || 'บันทึกไม่สำเร็จ');
 
@@ -1547,7 +1556,12 @@ async function saveEdit(id){
       'สถานที่จัดเก็บ': updated.storage,
       'หมายเหตุ': updated.notes,
     };
-    const res = await fetch(GS_URL + '?payload=' + encodeURIComponent(JSON.stringify(payload)));
+    const res = await fetch(GS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload),
+      redirect: 'follow',
+    });
     const json = await res.json();
     if(!json.ok) throw new Error(json.error || 'แก้ไขไม่สำเร็จ');
 
@@ -1567,7 +1581,12 @@ async function deleteItem(id){
   const r = db.find(x=>x.id===id); if(!r) return;
   try {
     const payload = { action: 'deleteItem', token: API_TOKEN, 'No.': r.no };
-    const res = await fetch(GS_URL + '?payload=' + encodeURIComponent(JSON.stringify(payload)));
+    const res = await fetch(GS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload),
+      redirect: 'follow',
+    });
     const json = await res.json();
     if(!json.ok) throw new Error(json.error || 'ลบไม่สำเร็จ');
 
@@ -2202,7 +2221,12 @@ async function saveStockItem(itemId){
       recorded_by: currentUser || 'ผู้ใช้',
       entries: todayRecord.entries,
     };
-    const res = await fetch(GS_URL + '?payload=' + encodeURIComponent(JSON.stringify(payload)));
+    const res = await fetch(GS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload),
+      redirect: 'follow',
+    });
     const json = await res.json();
     if(!json.ok) throw new Error(json.error || 'ส่งข้อมูลไม่สำเร็จ');
     showToast('✅ บวกเพิ่ม ' + (r.desc||r.no) + ' เรียบร้อย (sync Sheet แล้ว)');
@@ -3022,13 +3046,23 @@ async function deleteDailyEntry(date, entryIdx){
         date: day.date, date_th: day.date_th,
         recorded_by: day.recorded_by, entries: day.entries,
       };
-      const res = await fetch(GS_URL + '?payload=' + encodeURIComponent(JSON.stringify(payload)));
+      const res = await fetch(GS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload),
+      redirect: 'follow',
+    });
       const json = await res.json();
       if(!json.ok) throw new Error(json.error || 'ลบไม่สำเร็จ');
     } else {
       // ถ้าไม่มี entry เหลือเลยในวันนั้น ส่ง action deleteDailyDate เพื่อลบทั้งวันออกจาก Sheet
       const payload = { action: 'deleteDailyDate', token: API_TOKEN, date: day.date };
-      const res = await fetch(GS_URL + '?payload=' + encodeURIComponent(JSON.stringify(payload)));
+      const res = await fetch(GS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload),
+      redirect: 'follow',
+    });
       const json = await res.json();
       if(!json.ok) throw new Error(json.error || 'ลบไม่สำเร็จ');
       MOCK_DAILY.splice(MOCK_DAILY.indexOf(day), 1);
