@@ -2496,7 +2496,7 @@ function renderDaily(container){
           </tr></thead>
           <tbody>
             ${Object.entries(locTotalsDay).map(([loc,kg])=>
-              '<tr style="border-bottom:1px solid #f5f5f5"><td style="padding:5px 10px">📦 '+loc+'</td><td style="padding:5px 10px;text-align:right;font-weight:600;color:#2874a6">'+kg.toLocaleString()+' กก.</td></tr>'
+              '<tr style="border-bottom:1px solid #f5f5f5"><td style="padding:5px 10px">📦 '+escHtml(loc)+'</td><td style="padding:5px 10px;text-align:right;font-weight:600;color:#2874a6">'+kg.toLocaleString()+' กก.</td></tr>'
             ).join('')}
             <tr style="background:#eaf4fb">
               <td style="padding:6px 10px;font-weight:700;color:#1a5276">🔢 รวมทั้งหมด</td>
@@ -2511,19 +2511,19 @@ function renderDaily(container){
         style="padding:4px 12px;border-radius:20px;border:1px solid ${loc===selectedLocation?'#1a5276':'#d5d8dc'};
         background:${loc===selectedLocation?'#1a5276':'white'};color:${loc===selectedLocation?'white':'#555'};
         cursor:pointer;font-size:12px;white-space:nowrap">
-        ${loc === 'all' ? '🏭 ทั้งหมด' : '📦 ' + loc}
+        ${loc === 'all' ? '🏭 ทั้งหมด' : '📦 ' + escHtml(loc)}
         <span style="opacity:.7;font-size:11px">(${loc==='all'?normEntries.length:normEntries.filter(e=>e.location===loc).length})</span>
       </button>`).join('');
 
     const cards = Object.values(summary).length === 0
       ? emptyState('📊','ไม่พบข้อมูลเปรียบเทียบ','ยังไม่มีข้อมูลในวันที่เลือก')
       : Object.values(summary).map(s => `
-      <div data-no="${s.no}" data-desc="${s.desc}" style="background:white;border-radius:8px;padding:14px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+      <div data-no="${s.no}" data-desc="${escHtml(s.desc)}" style="background:white;border-radius:8px;padding:14px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,.06)">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
           <div>
             <span class="badge ${s.code[0]==='A'?'ba':s.code[0]==='B'?'bb':'bc'}" style="margin-right:6px">${s.code}</span>
-            <span style="font-weight:600;font-size:13px">${s.desc}</span>
-            <span style="color:#888;font-size:11px;margin-left:6px">${s.no}</span>
+            <span style="font-weight:600;font-size:13px">${escHtml(s.desc)}</span>
+            <span style="color:#888;font-size:11px;margin-left:6px">${escHtml(s.no)}</span>
           </div>
           <span style="background:#1a5276;color:white;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700">
             รวม ${(()=>{
@@ -2550,11 +2550,16 @@ function renderDaily(container){
           </tr></thead>
           <tbody>
             ${s.rows.map(r=>{
-              const ei = normEntries.findIndex(e=>e===r);
+              // ใช้ index ใน day.entries จริงๆ เพื่อป้องกันแก้/ลบผิด entry
+              const ei = day.entries.findIndex(e=>
+                e.no===r.no && e.location===r.location && 
+                e.storage===r.storage && e.qty===r.qty && 
+                e.unit===r.unit && e.note===r.note
+              );
               return `
             <tr style="border-bottom:1px solid #f5f5f5">
-              <td style="padding:4px 10px">${r.location||'-'}</td>
-              <td style="padding:4px 10px;color:#777">${r.storage||'-'}</td>
+              <td style="padding:4px 10px">${escHtml(r.location)||'-'}</td>
+              <td style="padding:4px 10px;color:#777">${escHtml(r.storage)||'-'}</td>
               <td style="padding:4px 10px;text-align:right;font-weight:600;color:#2874a6">${formatQty(r.qty, r.unit, r.no)}</td>
               <td style="padding:4px 6px;text-align:right;white-space:nowrap">
                 <button onclick="editDailyEntry('${date}',${ei})"
@@ -2573,7 +2578,7 @@ function renderDaily(container){
       <div style="background:#eaf4fb;border-radius:8px;padding:12px 16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
         <div>
           <div style="font-size:14px;font-weight:600;color:#1a5276">${day.date_th}</div>
-          <div style="font-size:12px;color:#777;margin-top:2px">${day.entries.length} รายการ | บันทึกโดย: ${day.recorded_by}</div>
+          <div style="font-size:12px;color:#777;margin-top:2px">${day.entries.length} รายการ | บันทึกโดย: ${escHtml(day.recorded_by)}</div>
         </div>
         <div style="font-size:12px;color:#555">${Object.values(summary).length} ชนิดสินค้า</div>
       </div>
@@ -3166,7 +3171,7 @@ function exportDailyPDF(mode='all'){
     // ===== แบบฟอร์มตรวจสต็อก (ช่องว่างให้กรอก) =====
     document.getElementById('printTitle').textContent = 'แบบฟอร์มตรวจสอบสต็อกวัตถุดิบ';
     document.getElementById('printSubtitle').textContent =
-      `วันที่ตรวจ: ${day.date_th}  |  พิมพ์วันที่: ${printDate}  |  บันทึกโดย: ${day.recorded_by}`;
+      `วันที่ตรวจ: ${day.date_th}  |  พิมพ์วันที่: ${printDate}  |  บันทึกโดย: ${escHtml(day.recorded_by)}`;
 
     main.innerHTML = `
       <div style="font-size:11px">
@@ -3535,7 +3540,7 @@ window._filterDailySearch = (q) => {
         + '<span class="badge ba" style="font-family:monospace;font-size:11px">'+e.no+'</span>'
         + '<span style="font-size:13px;font-weight:700;color:var(--blue)">'+formatQty(e.qty, e.unit, e.no)+'</span>'
         + '</div>'
-        + '<div style="font-size:13px;font-weight:500;color:var(--ink)">'+e.desc+'</div>'
+        + '<div style="font-size:13px;font-weight:500;color:var(--ink)">'+escHtml(e.desc)+'</div>'
         + '<div style="font-size:11px;color:var(--ink-3)">📍 '+normLoc(e.location||'')+'</div>'
         + '</div>';
     });
@@ -3616,7 +3621,7 @@ window._selectMonth = (ym) => {
     '<th style="padding:5px 10px;text-align:left;color:#555;font-weight:500">Location</th>'+
     '<th style="padding:5px 10px;text-align:right;color:#555;font-weight:500">รวม (กก.)</th>'+
     '</tr></thead><tbody>'+
-    Object.entries(totals).map(([loc,kg])=>'<tr style="border-bottom:1px solid #f5f5f5"><td style="padding:5px 10px">📦 '+loc+'</td><td style="padding:5px 10px;text-align:right;font-weight:600;color:#2874a6">'+kg.toLocaleString()+' กก.</td></tr>').join('')+
+    Object.entries(totals).map(([loc,kg])=>'<tr style="border-bottom:1px solid #f5f5f5"><td style="padding:5px 10px">📦 '+escHtml(loc)+'</td><td style="padding:5px 10px;text-align:right;font-weight:600;color:#2874a6">'+kg.toLocaleString()+' กก.</td></tr>').join('')+
     '<tr style="background:#eaf4fb"><td style="padding:6px 10px;font-weight:700;color:#1a5276">🔢 รวมทั้งหมด</td><td style="padding:6px 10px;text-align:right;font-weight:700;color:#1a5276">'+grand.toLocaleString()+' กก.</td></tr>'+
     '</tbody></table></div>';
 
