@@ -1729,40 +1729,52 @@ function toggleAcc(h){
 
 async function uploadImg(input){
   const file = input.files[0]; if(!file) return;
-  document.getElementById('imgZoneText').textContent = '⏳ กำลังประมวลผล...';
-
-  // อ่าน base64 สำหรับ preview เสมอ
-  const reader = new FileReader();
-  reader.onload = async e => {
-    const base64 = e.target.result;
+  document.getElementById('imgZoneText').textContent = '⏳ กำลังบีบอัดรูป...';
+  try {
+    const base64 = await compressImageToBase64(file);
+    if(!base64) throw new Error('ไม่สามารถประมวลผลรูปได้');
     document.getElementById('imgPreview').src = base64;
     document.getElementById('imgPreviewArea').style.display = 'block';
+    document.getElementById('f_image').value = base64;
+    document.getElementById('imgZoneText').textContent =
+      '✅ โหลดรูปแล้ว (~' + Math.round(base64.length/1024) + ' KB)';
+    document.getElementById('imgZone').style.borderColor='#1e8449';
+  } catch(err){
+    showToast('❌ ประมวลผลรูปไม่สำเร็จ: ' + err.message, 'error');
+    document.getElementById('imgZoneText').textContent = 'คลิกเพื่อเลือกรูป';
+  }
+}
 
-    if(IMGBB_KEY){
-      // ถ้ามี key ให้อัปโหลดไป ImgBB
-      try {
-        const fd = new FormData(); fd.append('image', file);
-        const res = await fetch('https://api.imgbb.com/1/upload?key='+IMGBB_KEY,{method:'POST',body:fd});
-        const data = await res.json();
-        if(data.success){
-          document.getElementById('f_image').value = data.data.url;
-          document.getElementById('imgZoneText').textContent = '✅ อัปโหลดสำเร็จ';
-          document.getElementById('imgZone').style.borderColor='#1e8449';
-        } else throw new Error();
-      } catch(err){
-        // fallback ใช้ base64
-        document.getElementById('f_image').value = base64;
-        document.getElementById('imgZoneText').textContent = '✅ โหลดรูปแล้ว (base64)';
-        document.getElementById('imgZone').style.borderColor='#1e8449';
-      }
-    } else {
-      // ไม่มี key → ใช้ base64 ส่งให้ GS จัดการ
-      document.getElementById('f_image').value = base64;
-      document.getElementById('imgZoneText').textContent = '✅ โหลดรูปแล้ว';
-      document.getElementById('imgZone').style.borderColor='#1e8449';
-    }
-  };
-  reader.readAsDataURL(file);
+// ===== บีบอัด/ย่อขนาดรูปก่อนแปลงเป็น base64 (แก้ปัญหา Google Sheets cell limit 50,000 ตัวอักษร) =====
+function compressImageToBase64(file, maxBytes = 40000){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const attempts = [
+          {w: 700, q: 0.6}, {w: 600, q: 0.5}, {w: 500, q: 0.4},
+          {w: 400, q: 0.35}, {w: 300, q: 0.3},
+        ];
+        let result = null;
+        for(const a of attempts){
+          let w = img.width, h = img.height;
+          if(w > a.w){ h = Math.round(h * (a.w / w)); w = a.w; }
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          const dataUrl = canvas.toDataURL('image/jpeg', a.q);
+          if(dataUrl.length <= maxBytes){ result = dataUrl; break; }
+          result = dataUrl;
+        }
+        resolve(result);
+      };
+      img.onerror = () => reject(new Error('โหลดรูปไม่สำเร็จ'));
+      img.src = e.target.result;
+    };
+    reader.onerror = () => reject(new Error('อ่านไฟล์ไม่สำเร็จ'));
+    reader.readAsDataURL(file);
+  });
 }
 
 function clearImg(){
@@ -2028,30 +2040,16 @@ async function uploadSEImg(itemId, input){
   if(!file) return;
   const status = document.getElementById('seimg_status_' + itemId);
   const preview = document.getElementById('seimg_preview_' + itemId);
-  status.textContent = '⏳ กำลังประมวลผล...';
-
-  const reader = new FileReader();
-  reader.onload = async ev => {
-    const base64 = ev.target.result;
+  status.textContent = '⏳ กำลังบีบอัดรูป...';
+  try {
+    const base64 = await compressImageToBase64(file);
+    if(!base64) throw new Error('ไม่สามารถประมวลผลรูปได้');
     preview.innerHTML = `<img src="${base64}" style="max-width:100%;max-height:120px;border-radius:6px;border:1px solid #eee;margin-top:4px">`;
-
-    if(IMGBB_KEY){
-      try {
-        const fd = new FormData(); fd.append('image', file);
-        const res = await fetch('https://api.imgbb.com/1/upload?key='+IMGBB_KEY,{method:'POST',body:fd});
-        const data = await res.json();
-        if(data.success){
-          window._seImgs[itemId] = data.data.url;
-          status.textContent = '✅ อัปโหลดสำเร็จ';
-          return;
-        }
-      } catch(e){}
-    }
-    // ไม่มี key หรือ upload fail → ใช้ base64
     window._seImgs[itemId] = base64;
-    status.textContent = '✅ โหลดรูปแล้ว';
-  };
-  reader.readAsDataURL(file);
+    status.textContent = '✅ โหลดรูปแล้ว (~' + Math.round(base64.length/1024) + ' KB)';
+  } catch(err){
+    status.textContent = '❌ ประมวลผลรูปไม่สำเร็จ: ' + err.message;
+  }
 }
 
 function updateSE(itemId, rowIdx, field, val){
