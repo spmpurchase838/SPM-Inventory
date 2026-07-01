@@ -1676,9 +1676,9 @@ function showDetail(id){
       <dt>No.</dt><dd style="font-family:monospace">${r.no||'-'}</dd>
       <dt>Description</dt><dd>${escHtml(r.desc)||'-'}</dd>
       <dt>บรรจุ</dt><dd>${r.pkg||'-'} ${r.col2?'('+r.col2+' กก./'+r.pkg+')':''}</dd>
-      <dt>เงื่อนไขซื้อขาย</dt><dd>${r.cond||'-'}</dd>
-      <dt>Location</dt><dd>${r.loc||'-'}</dd>
-      <dt>สถานที่จัดเก็บ</dt><dd>${r.storage||'-'}</dd>
+      <dt>เงื่อนไขซื้อขาย</dt><dd>${escHtml(r.cond)||'-'}</dd>
+      <dt>Location</dt><dd>${escHtml(r.loc)||'-'}</dd>
+      <dt>สถานที่จัดเก็บ</dt><dd>${escHtml(r.storage)||'-'}</dd>
       <dt>หมายเหตุ</dt><dd>${escHtml(r.notes)||'-'}</dd>
     </dl>
     ${stockHTML}
@@ -3010,18 +3010,9 @@ async function deleteDailyEntry(date, entryIdx){
   if(!confirm('ลบรายการนี้?')) return;
   const day = MOCK_DAILY.find(d=>d.date===date);
   if(!day) return;
-  // นับ index จาก normEntries (หลัง normalize)
-  const normEntries = day.entries.map(e=>({...e, location: normLoc(e.location||'')}));
-  const realEntry = normEntries[entryIdx];
-  if(!realEntry) return;
-  // ลบ entry ที่ตรงกับ real data
-  const realIdx = day.entries.findIndex((e,i)=>{
-    const ne = normEntries[i];
-    return ne===realEntry || (ne.no===realEntry.no && ne.location===realEntry.location && ne.qty===realEntry.qty && ne.unit===realEntry.unit);
-  });
-  if(realIdx === -1) return;
-
-  const deleted = day.entries.splice(realIdx, 1)[0];
+  // ใช้ entryIdx ตรงๆ ที่ doRender ส่งมาให้แล้ว (index ใน day.entries จริงๆ)
+  if(entryIdx < 0 || entryIdx >= day.entries.length) return;
+  const deleted = day.entries.splice(entryIdx, 1)[0];
 
   // sync ไป Google Sheet — ส่ง entries ที่เหลือของวันนั้นไปเขียนทับใหม่
   try {
@@ -3056,15 +3047,10 @@ async function deleteDailyEntry(date, entryIdx){
 function editDailyEntry(date, entryIdx){
   const day = MOCK_DAILY.find(d=>d.date===date);
   if(!day) return;
-  const normEntries = day.entries.map(e=>({...e, location: normLoc(e.location||'')}));
-  const entry = normEntries[entryIdx];
-  if(!entry) return;
-
-  // หา real index
-  const realIdx = day.entries.findIndex((e,i)=>{
-    const ne = normEntries[i];
-    return ne===entry || (ne.no===entry.no && ne.location===entry.location && ne.qty===entry.qty && ne.unit===entry.unit);
-  });
+  // ใช้ entryIdx ตรงๆ ที่ doRender ส่งมาให้แล้ว (index ใน day.entries จริงๆ)
+  if(entryIdx < 0 || entryIdx >= day.entries.length) return;
+  const entry = day.entries[entryIdx];
+  const realIdx = entryIdx;
 
   // สร้าง edit modal
   const main = document.getElementById('modalBox');
@@ -3133,11 +3119,11 @@ function exportDailyPDF(mode='all'){
     const codeName = CODE_MAP[code] || code;
     const rows = entries.map(e => `
       <tr>
-        <td style="padding:7px 10px;border:1px solid #ccc;font-family:monospace;font-size:11px">${e.no}</td>
-        <td style="padding:7px 10px;border:1px solid #ccc;font-size:11px">${e.desc}</td>
-        <td style="padding:7px 10px;border:1px solid #ccc;font-size:11px">${e.location||'-'}</td>
-        <td style="padding:7px 10px;border:1px solid #ccc;font-size:11px">${e.storage||'-'}</td>
-        <td style="padding:7px 10px;border:1px solid #ccc;font-size:11px;text-align:center">${e.unit}</td>
+        <td style="padding:7px 10px;border:1px solid #ccc;font-family:monospace;font-size:11px">${escHtml(e.no)}</td>
+        <td style="padding:7px 10px;border:1px solid #ccc;font-size:11px">${escHtml(e.desc)}</td>
+        <td style="padding:7px 10px;border:1px solid #ccc;font-size:11px">${escHtml(e.location)||'-'}</td>
+        <td style="padding:7px 10px;border:1px solid #ccc;font-size:11px">${escHtml(e.storage)||'-'}</td>
+        <td style="padding:7px 10px;border:1px solid #ccc;font-size:11px;text-align:center">${escHtml(e.unit)}</td>
         <td style="padding:7px 10px;border:1px solid #ccc;width:100px"></td>
       </tr>`).join('');
 
