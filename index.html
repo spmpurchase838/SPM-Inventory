@@ -738,6 +738,7 @@ async function loadFromSheet(){
       loc:     r['location']    || '',
       storage: r['สถานที่จัดเก็บ'] || '',
       image:   r['pic']         || '',
+      image2:  r['pic2']        || '',
       notes:   r['หมายเหตุ']     || '',
       stocks:  [],
     }));
@@ -1306,18 +1307,33 @@ function formHTML(r={}){
   <div class="form-group" style="background:#f8f9fa;border-radius:6px;padding:10px 14px">
     <div style="font-size:12px;color:#888">💡 ต้องการอัปเดตสต็อก ไปที่เมนู <strong>✏️ อัปเดตสต็อก</strong></div>
   </div>
-  <div class="form-group">
-    <label>ภาพ</label>
-    <div class="img-zone" onclick="document.getElementById('imgInput').click()" id="imgZone">
-      <svg width="24" height="24" fill="none" stroke="#aaa" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-      <p id="imgZoneText">คลิกเพื่อเลือกรูป</p>
+  <div class="form-row">
+    <div class="form-group">
+      <label>รูปสินค้า</label>
+      <div class="img-zone" onclick="document.getElementById('imgInput').click()" id="imgZone">
+        <svg width="24" height="24" fill="none" stroke="#aaa" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+        <p id="imgZoneText">คลิกเพื่อเลือกรูป</p>
+      </div>
+      <input type="file" id="imgInput" accept="image/*" style="display:none" onchange="uploadImg(this,'')">
+      <div id="imgPreviewArea" style="margin-top:6px;display:${r.image?'block':'none'}">
+        <img id="imgPreview" src="${r.image||''}" style="max-width:100%;max-height:120px;border-radius:6px;border:1px solid #eee">
+        <button type="button" onclick="clearImg('')" style="display:block;margin-top:3px;font-size:11px;color:#c0392b;background:none;border:none;cursor:pointer">✕ ลบรูป</button>
+      </div>
+      <input type="hidden" id="f_image" value="${r.image||''}">
     </div>
-    <input type="file" id="imgInput" accept="image/*" style="display:none" onchange="uploadImg(this)">
-    <div id="imgPreviewArea" style="margin-top:6px;display:${r.image?'block':'none'}">
-      <img id="imgPreview" src="${r.image||''}" style="max-width:100%;max-height:120px;border-radius:6px;border:1px solid #eee">
-      <button type="button" onclick="clearImg()" style="display:block;margin-top:3px;font-size:11px;color:#c0392b;background:none;border:none;cursor:pointer">✕ ลบรูป</button>
+    <div class="form-group">
+      <label>รูปแบบบรรจุภัณฑ์</label>
+      <div class="img-zone" onclick="document.getElementById('imgInput2').click()" id="imgZone2">
+        <svg width="24" height="24" fill="none" stroke="#aaa" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+        <p id="imgZoneText2">คลิกเพื่อเลือกรูป</p>
+      </div>
+      <input type="file" id="imgInput2" accept="image/*" style="display:none" onchange="uploadImg(this,'2')">
+      <div id="imgPreviewArea2" style="margin-top:6px;display:${r.image2?'block':'none'}">
+        <img id="imgPreview2" src="${r.image2||''}" style="max-width:100%;max-height:120px;border-radius:6px;border:1px solid #eee">
+        <button type="button" onclick="clearImg('2')" style="display:block;margin-top:3px;font-size:11px;color:#c0392b;background:none;border:none;cursor:pointer">✕ ลบรูป</button>
+      </div>
+      <input type="hidden" id="f_image2" value="${r.image2||''}">
     </div>
-    <input type="hidden" id="f_image" value="${r.image||''}">
   </div>`;
 }
 
@@ -1388,6 +1404,7 @@ function getFormData(){
     storage: getVal('f_storage'),
     notes:   getVal('f_notes'),
     image:   getVal('f_image'),
+    image2:  getVal('f_image2'),
   };
 }
 
@@ -1467,6 +1484,7 @@ async function saveNew(){
     loc:     d.loc    || '',
     storage: d.storage|| '',
     image:   d.image  || '',
+    image2:  d.image2 || '',
     notes:   d.notes  || '',
     stocks:  [], // สต็อกจะถูกบันทึกผ่านหน้า อัปเดตสต็อก เท่านั้น
   };
@@ -1479,6 +1497,7 @@ async function saveNew(){
     'No.': newItem.no,
     'Description': newItem.desc,
     'pic': newItem.image,
+    'pic2': newItem.image2,
     'บรรจุ': newItem.pkg,
     'นน./หน่วย': newItem.col2,
     'เงื่อนไขการซื้อขาย': newItem.cond,
@@ -1537,6 +1556,7 @@ async function saveEdit(id){
       loc:     d.loc     || '',
       storage: d.storage || '',
       image:   d.image   || '',
+      image2:  d.image2  || '',
       notes:   d.notes   || '',
       stocks:  [],
     };
@@ -1549,6 +1569,7 @@ async function saveEdit(id){
       'No.': updated.no,
       'Description': updated.desc,
       'pic': updated.image,
+      'pic2': updated.image2,
       'บรรจุ': updated.pkg,
       'นน./หน่วย': updated.col2,
       'เงื่อนไขการซื้อขาย': updated.cond,
@@ -1689,7 +1710,10 @@ function showDetail(id){
 
   document.getElementById('modalBox').innerHTML = `
     <h2>${r.no} — ${escHtml(r.desc)||'(ไม่มีชื่อ)'}</h2>
-    ${r.image?`<div style="margin-bottom:14px"><img src="${r.image}" style="max-width:100%;max-height:150px;border-radius:8px;border:1px solid #eee"></div>`:''}
+    ${(r.image||r.image2)?`<div style="margin-bottom:14px;display:flex;gap:10px;flex-wrap:wrap">
+      ${r.image ? `<div><div style="font-size:10px;color:#aaa;margin-bottom:3px">รูปสินค้า</div><img src="${r.image}" style="max-width:150px;max-height:150px;border-radius:8px;border:1px solid #eee"></div>` : ''}
+      ${r.image2 ? `<div><div style="font-size:10px;color:#aaa;margin-bottom:3px">รูปแบบบรรจุภัณฑ์</div><img src="${r.image2}" style="max-width:150px;max-height:150px;border-radius:8px;border:1px solid #eee"></div>` : ''}
+    </div>`:''}
     <dl class="detail-grid">
       <dt>Code</dt><dd>${getBadge(r.code)} ${CODE_MAP[r.code]||''}</dd>
       <dt>No.</dt><dd style="font-family:monospace">${r.no||'-'}</dd>
@@ -1727,21 +1751,21 @@ function toggleAcc(h){
   h.nextElementSibling.classList.toggle('open');
 }
 
-async function uploadImg(input){
+async function uploadImg(input, target=''){
   const file = input.files[0]; if(!file) return;
-  document.getElementById('imgZoneText').textContent = '⏳ กำลังบีบอัดรูป...';
+  document.getElementById('imgZoneText'+target).textContent = '⏳ กำลังบีบอัดรูป...';
   try {
     const base64 = await compressImageToBase64(file);
     if(!base64) throw new Error('ไม่สามารถประมวลผลรูปได้');
-    document.getElementById('imgPreview').src = base64;
-    document.getElementById('imgPreviewArea').style.display = 'block';
-    document.getElementById('f_image').value = base64;
-    document.getElementById('imgZoneText').textContent =
+    document.getElementById('imgPreview'+target).src = base64;
+    document.getElementById('imgPreviewArea'+target).style.display = 'block';
+    document.getElementById('f_image'+target).value = base64;
+    document.getElementById('imgZoneText'+target).textContent =
       '✅ โหลดรูปแล้ว (~' + Math.round(base64.length/1024) + ' KB)';
-    document.getElementById('imgZone').style.borderColor='#1e8449';
+    document.getElementById('imgZone'+target).style.borderColor='#1e8449';
   } catch(err){
     showToast('❌ ประมวลผลรูปไม่สำเร็จ: ' + err.message, 'error');
-    document.getElementById('imgZoneText').textContent = 'คลิกเพื่อเลือกรูป';
+    document.getElementById('imgZoneText'+target).textContent = 'คลิกเพื่อเลือกรูป';
   }
 }
 
@@ -1777,12 +1801,12 @@ function compressImageToBase64(file, maxBytes = 40000){
   });
 }
 
-function clearImg(){
-  document.getElementById('f_image').value='';
-  document.getElementById('imgInput').value='';
-  document.getElementById('imgPreviewArea').style.display='none';
-  document.getElementById('imgZoneText').textContent='คลิกเพื่อเลือกรูป';
-  document.getElementById('imgZone').style.borderColor='#d5d8dc';
+function clearImg(target=''){
+  document.getElementById('f_image'+target).value='';
+  document.getElementById('imgInput'+target).value='';
+  document.getElementById('imgPreviewArea'+target).style.display='none';
+  document.getElementById('imgZoneText'+target).textContent='คลิกเพื่อเลือกรูป';
+  document.getElementById('imgZone'+target).style.borderColor='#d5d8dc';
 }
 
 document.getElementById('modalBg').addEventListener('click', e=>{
