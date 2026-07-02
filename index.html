@@ -1148,7 +1148,12 @@ function renderListTable(slice){
     // Card layout สำหรับมือถือ
     const cards = freshSlice.map(r => {
       const {qtyCell, kgCell} = getStock(r);
-      const img = r.image ? '<img class="thumb" src="'+r.image+'" onclick="showDetail('+r.id+')" style="width:44px;height:44px">' : '';
+      const img = (r.image || r.image2)
+        ? '<div style="display:flex;gap:4px">'
+          + (r.image  ? '<img class="thumb" src="'+r.image+'" onclick="showDetail('+r.id+')" style="width:44px;height:44px" title="รูปสินค้า">' : '')
+          + (r.image2 ? '<img class="thumb" src="'+r.image2+'" onclick="showDetail('+r.id+')" style="width:44px;height:44px" title="รูปแบบบรรจุภัณฑ์">' : '')
+          + '</div>'
+        : '';
       return '<div style="background:white;border:1px solid var(--rule);border-radius:8px;padding:12px;margin-bottom:8px" oncontextmenu="showQuickAction(event,'+r.id+')" ontouchstart="_qaTouch(event,'+r.id+')" ontouchend="_qaClear()">'+
         '<div style="display:flex;gap:10px;align-items:flex-start">'+
         (img ? '<div>'+img+'</div>' : '')+
@@ -1180,7 +1185,12 @@ function renderListTable(slice){
     // Table layout สำหรับคอม
     const rows = freshSlice.map(r => {
       const {qtyCell, kgCell} = getStock(r);
-      const img = r.image ? '<img class="thumb" src="'+r.image+'" onclick="showDetail('+r.id+')">' : '<div class="no-img">ไม่มี</div>';
+      const img = (r.image || r.image2)
+        ? '<div style="display:flex;gap:4px">'
+          + (r.image  ? '<img class="thumb" src="'+r.image+'" onclick="showDetail('+r.id+')" title="รูปสินค้า">' : '')
+          + (r.image2 ? '<img class="thumb" src="'+r.image2+'" onclick="showDetail('+r.id+')" title="รูปแบบบรรจุภัณฑ์">' : '')
+          + '</div>'
+        : '<div class="no-img">ไม่มี</div>';
       return '<tr oncontextmenu="showQuickAction(event,'+r.id+')" style="cursor:context-menu">' +
         '<td>'+img+'</td>' +
         '<td>'+getBadge(r.code)+'</td>' +
