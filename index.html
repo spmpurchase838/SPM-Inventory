@@ -1999,7 +1999,7 @@ function renderStockEdit(container){
             <option value="add">+ บวกเพิ่ม</option>
             <option value="replace">↺ แทนที่ยอดเดิม</option>
           </select>
-          <button class="btn btn-sm btn-primary" onclick="saveStockItem(${r.id})">บันทึก</button>
+          <button class="btn btn-sm btn-primary" onclick="saveStockItem(${r.id}, this)">บันทึก</button>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 90px 70px 1.3fr 28px;gap:5px;margin-bottom:4px">
@@ -2285,161 +2285,177 @@ function _renderSERows(itemId){
   stocks.forEach((s,i) => _updateSERowPreview(itemId, i));
 }
 
-async function saveStockItem(itemId){
+if(!window._seSaving) window._seSaving = {};
+
+async function saveStockItem(itemId, btnEl){
   const r = db.find(x => x.id === itemId);
   if(!r) return;
 
-  // ป้องกัน double click
-  const stockBtn = document.querySelector(`button[onclick="saveStockItem(${itemId})"]`);
-  if(stockBtn){ stockBtn.disabled=true; stockBtn.textContent='กำลังบันทึก...'; }
+  // ป้องกันกดซ้ำ — ใช้ flag กันไว้ก่อน แล้วอ้างอิงปุ่มที่ส่งเข้ามาโดยตรง (แม่นยำกว่า querySelector หาจาก onclick string)
+  if(window._seSaving[itemId]) return;
+  window._seSaving[itemId] = true;
 
-  const newEntries = (window._seStocks[itemId]||[]).filter(s => s.qty && parseFloat(s.qty) > 0);
-  // validate qty
-  for(const s of newEntries){
-    const qty = parseFloat(s.qty);
-    if(isNaN(qty) || qty <= 0){ showToast('จำนวนต้องเป็นตัวเลขที่มากกว่า 0', 'error'); return; }
-    if(qty > 999999){ showToast('จำนวนดูเหมือนผิดปกติ (' + qty.toLocaleString() + ') กรุณาตรวจสอบ', 'error'); return; }
-    if(!s.unit || !s.unit.trim()){ showToast('กรุณาเลือกหน่วย', 'error'); return; }
-    if(s.unit === 'กระสอบ' && (!s.kgPerUnit || parseFloat(s.kgPerUnit) <= 0)){
-      showToast('กรุณากรอกน้ำหนักต่อกระสอบ (กก./กระสอบ)', 'error');
+  const _setBtnState = (saving) => {
+    const btn = btnEl || document.querySelector(`button[onclick^="saveStockItem(${itemId}"]`);
+    if(btn){ btn.disabled = saving; btn.textContent = saving ? '⏳ กำลังบันทึก...' : '+ บวกเพิ่ม'; }
+  };
+  _setBtnState(true);
+  showToast('⏳ กำลังบันทึก ' + (r.desc||r.no) + ' ...');
+
+  try {
+    const newEntries = (window._seStocks[itemId]||[]).filter(s => s.qty && parseFloat(s.qty) > 0);
+    // validate qty
+    for(const s of newEntries){
+      const qty = parseFloat(s.qty);
+      if(isNaN(qty) || qty <= 0){ showToast('จำนวนต้องเป็นตัวเลขที่มากกว่า 0', 'error'); return; }
+      if(qty > 999999){ showToast('จำนวนดูเหมือนผิดปกติ (' + qty.toLocaleString() + ') กรุณาตรวจสอบ', 'error'); return; }
+      if(!s.unit || !s.unit.trim()){ showToast('กรุณาเลือกหน่วย', 'error'); return; }
+      if(s.unit === 'กระสอบ' && (!s.kgPerUnit || parseFloat(s.kgPerUnit) <= 0)){
+        showToast('กรุณากรอกน้ำหนักต่อกระสอบ (กก./กระสอบ)', 'error');
+        return;
+      }
+      if(s.unit === 'bigbag' && (!s.kgPerUnit || parseFloat(s.kgPerUnit) <= 0)){
+        s.kgPerUnit = '1000'; // ค่ามาตรฐาน เผื่อไม่ได้ตั้งไว้
+      }
+    }
+    if(!newEntries.length){
+      showToast('กรุณากรอกจำนวนก่อนบันทึก', 'error');
       return;
     }
-    if(s.unit === 'bigbag' && (!s.kgPerUnit || parseFloat(s.kgPerUnit) <= 0)){
-      s.kgPerUnit = '1000'; // ค่ามาตรฐาน เผื่อไม่ได้ตั้งไว้
+
+    // เช็ค mode: add = บวกเพิ่ม, replace = แทนที่
+    const modeEl = document.getElementById('semode_' + itemId);
+    const mode = modeEl ? modeEl.value : 'add';
+
+    const idx = db.findIndex(x => x.id === itemId);
+    const existingStocks = [...(db[idx].stocks||[])];
+
+    if(mode === 'replace'){
+      // แทนที่ — ลบ entry เดิมของ location+unit นั้นออกก่อน แล้วใส่ใหม่
+      newEntries.forEach(ne => {
+        const filtered = existingStocks.filter(s =>
+          !(s.location === ne.location && s.loc === ne.loc && s.unit === ne.unit)
+        );
+        filtered.push({...ne});
+        // อัปเดต existingStocks
+        existingStocks.length = 0;
+        filtered.forEach(s => existingStocks.push(s));
+      });
+    } else {
+      // บวกเพิ่ม — รวมกับของเดิม
+      newEntries.forEach(ne => {
+        const existIdx = existingStocks.findIndex(s =>
+          s.location === ne.location && s.loc === ne.loc && s.unit === ne.unit
+        );
+        if(existIdx > -1){
+          existingStocks[existIdx].qty = String(r2(parseFloat(existingStocks[existIdx].qty||0) + parseFloat(ne.qty)));
+        } else {
+          existingStocks.push({...ne});
+        }
+      });
     }
-  }
-  if(!newEntries.length){
-    if(stockBtn){ stockBtn.disabled=false; stockBtn.textContent='+ บวกเพิ่ม'; }
-    showToast('กรุณากรอกจำนวนก่อนบันทึก', 'error');
-    return;
-  }
+    db[idx].stocks = existingStocks;
 
-  // เช็ค mode: add = บวกเพิ่ม, replace = แทนที่
-  const modeEl = document.getElementById('semode_' + itemId);
-  const mode = modeEl ? modeEl.value : 'add';
+    const today = new Date();
+    const dateStr = today.toISOString().split('T')[0];
+    const months = 'มกราคม กุมภาพันธ์ มีนาคม เมษายน พฤษภาคม มิถุนายน กรกฎาคม สิงหาคม กันยายน ตุลาคม พฤศจิกายน ธันวาคม'.split(' ');
+    const dateTh = `${today.getDate()} ${months[today.getMonth()]} ${today.getFullYear()+543}`;
+    let todayRecord = MOCK_DAILY.find(d => d.date === dateStr);
+    if(!todayRecord){
+      todayRecord = {date: dateStr, date_th: dateTh, entries: [], recorded_by: currentUser||'ผู้ใช้'};
+      MOCK_DAILY.push(todayRecord);
+      _clearDailyIndex();
+    }
 
-  const idx = db.findIndex(x => x.id === itemId);
-  const existingStocks = [...(db[idx].stocks||[])];
+    if(mode === 'replace'){
+      // ลบ entry เดิมของสินค้านี้ออกก่อน แล้วใส่ใหม่
+      todayRecord.entries = todayRecord.entries.filter(e => e.no !== r.no);
+    }
 
-  if(mode === 'replace'){
-    // แทนที่ — ลบ entry เดิมของ location+unit นั้นออกก่อน แล้วใส่ใหม่
-    newEntries.forEach(ne => {
-      const filtered = existingStocks.filter(s =>
-        !(s.location === ne.location && s.loc === ne.loc && s.unit === ne.unit)
-      );
-      filtered.push({...ne});
-      // อัปเดต existingStocks
-      existingStocks.length = 0;
-      filtered.forEach(s => existingStocks.push(s));
+    const itemImgs = window._seImgs ? (window._seImgs[itemId]||[]) : [];
+    newEntries.forEach(s => {
+      todayRecord.entries.push({
+        no: r.no, desc: r.desc, code: r.code,
+        location: s.location||'', storage: s.loc||'',
+        qty: parseFloat(s.qty), unit: s.unit||'',
+        kgPerUnit: s.kgPerUnit||'',
+        note: s.note||'', images: itemImgs
+      });
     });
-  } else {
-    // บวกเพิ่ม — รวมกับของเดิม
-    newEntries.forEach(ne => {
-      const existIdx = existingStocks.findIndex(s =>
-        s.location === ne.location && s.loc === ne.loc && s.unit === ne.unit
-      );
-      if(existIdx > -1){
-        existingStocks[existIdx].qty = String(r2(parseFloat(existingStocks[existIdx].qty||0) + parseFloat(ne.qty)));
-      } else {
-        existingStocks.push({...ne});
-      }
-    });
-  }
-  db[idx].stocks = existingStocks;
+    _clearStockCache();
 
-  const today = new Date();
-  const dateStr = today.toISOString().split('T')[0];
-  const months = 'มกราคม กุมภาพันธ์ มีนาคม เมษายน พฤษภาคม มิถุนายน กรกฎาคม สิงหาคม กันยายน ตุลาคม พฤศจิกายน ธันวาคม'.split(' ');
-  const dateTh = `${today.getDate()} ${months[today.getMonth()]} ${today.getFullYear()+543}`;
-  let todayRecord = MOCK_DAILY.find(d => d.date === dateStr);
-  if(!todayRecord){
-    todayRecord = {date: dateStr, date_th: dateTh, entries: [], recorded_by: currentUser||'ผู้ใช้'};
-    MOCK_DAILY.push(todayRecord);
-    _clearDailyIndex();
-  }
+    // ส่งไป Google Sheet ก่อน — ปุ่มยัง disabled อยู่ตลอดช่วงรอนี้ ไม่รีเซ็ตก่อนเวลา
+    let syncOk = true, syncErrMsg = '';
+    try {
+      const payload = {
+        action: 'saveDaily',
+        token: API_TOKEN,
+        date: dateStr,
+        date_th: dateTh,
+        recorded_by: currentUser || 'ผู้ใช้',
+        entries: todayRecord.entries,
+      };
+      const res = await fetch(GS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(payload),
+        redirect: 'follow',
+      });
+      const json = await res.json();
+      if(!json.ok) throw new Error(json.error || 'ส่งข้อมูลไม่สำเร็จ');
+    } catch(e) {
+      syncOk = false; syncErrMsg = e.message;
+    }
 
-  if(mode === 'replace'){
-    // ลบ entry เดิมของสินค้านี้ออกก่อน แล้วใส่ใหม่
-    todayRecord.entries = todayRecord.entries.filter(e => e.no !== r.no);
-  }
+    // reset input (ทำหลังจาก sync เสร็จแล้วเท่านั้น กันกดซ้ำระหว่างรอ)
+    window._seStocks[itemId] = [{location:'',loc:'',qty:'',unit:''}];
+    if(window._seImgs) window._seImgs[itemId] = [];
+    const _prevPreview = document.getElementById('seimg_preview_' + itemId);
+    if(_prevPreview) _prevPreview.innerHTML = '';
+    const _prevStatus = document.getElementById('seimg_status_' + itemId);
+    if(_prevStatus) _prevStatus.textContent = '';
 
-  const itemImgs = window._seImgs ? (window._seImgs[itemId]||[]) : [];
-  newEntries.forEach(s => {
-    todayRecord.entries.push({
-      no: r.no, desc: r.desc, code: r.code,
-      location: s.location||'', storage: s.loc||'',
-      qty: parseFloat(s.qty), unit: s.unit||'',
-      kgPerUnit: s.kgPerUnit||'',
-      note: s.note||'', images: itemImgs
-    });
-  });
-  _clearStockCache();
+    // track recent
+    if(!window._seRecentIds) window._seRecentIds = [];
+    window._seRecentIds = [itemId, ...window._seRecentIds.filter(x=>x!==itemId)];
 
-  // reset input
-  window._seStocks[itemId] = [{location:'',loc:'',qty:'',unit:''}];
-  if(window._seImgs) window._seImgs[itemId] = [];
-  const _prevPreview = document.getElementById('seimg_preview_' + itemId);
-  if(_prevPreview) _prevPreview.innerHTML = '';
-  const _prevStatus = document.getElementById('seimg_status_' + itemId);
-  if(_prevStatus) _prevStatus.textContent = '';
-  // re-render card นั้นเพื่ออัปเดตยอดสต็อกที่แสดง
-  _clearStockCache();
-  const cardWrap = document.getElementById('se_' + itemId)?.closest('[id^="secard_"]') || null;
-  if(window._doSEFilter){
-    const q = document.getElementById('seSearchInput')?.value || '';
-    window._doSEFilter(q);
-  }
+    // ลบ day ที่ไม่มี entry ออก
+    for(let i = MOCK_DAILY.length - 1; i >= 0; i--){
+      if(!MOCK_DAILY[i].entries || MOCK_DAILY[i].entries.length === 0) MOCK_DAILY.splice(i, 1);
+    }
+    _clearStockCache(); _clearDailyIndex();
+    _saveDailyData();
 
-  // track recent
-  if(!window._seRecentIds) window._seRecentIds = [];
-  window._seRecentIds = [itemId, ...window._seRecentIds.filter(x=>x!==itemId)];
+    if(syncOk){
+      showToast('✅ บวกเพิ่ม ' + (r.desc||r.no) + ' เรียบร้อย (sync Sheet แล้ว)');
+    } else {
+      showToast('⚠️ บันทึกในเครื่องแล้ว แต่ sync Google Sheet ไม่สำเร็จ: ' + syncErrMsg, 'error');
+    }
 
-  // แจ้งเตือน
-  if(stockBtn){ stockBtn.disabled=false; stockBtn.textContent='+ บวกเพิ่ม'; }
-  // ลบ day ที่ไม่มี entry ออก
-  for(let i = MOCK_DAILY.length - 1; i >= 0; i--){
-    if(!MOCK_DAILY[i].entries || MOCK_DAILY[i].entries.length === 0) MOCK_DAILY.splice(i, 1);
-  }
-  _clearStockCache(); _clearDailyIndex();
-  _saveDailyData();
-
-  // ส่งไป Google Sheet
-  try {
-    const payload = {
-      action: 'saveDaily',
-      token: API_TOKEN,
-      date: dateStr,
-      date_th: dateTh,
-      recorded_by: currentUser || 'ผู้ใช้',
-      entries: todayRecord.entries,
-    };
-    const res = await fetch(GS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(payload),
-      redirect: 'follow',
-    });
-    const json = await res.json();
-    if(!json.ok) throw new Error(json.error || 'ส่งข้อมูลไม่สำเร็จ');
-    showToast('✅ บวกเพิ่ม ' + (r.desc||r.no) + ' เรียบร้อย (sync Sheet แล้ว)');
-  } catch(e) {
-    showToast('⚠️ บันทึกในเครื่องแล้ว แต่ sync Google Sheet ไม่สำเร็จ: ' + e.message, 'error');
-  }
-
-  // re-render และ scroll ขึ้นบน
-  const mc = document.getElementById('mainContent');
-  setTimeout(() => {
+    // re-render รายการ (ตอนนี้ค่อยสร้างปุ่มใหม่ทับของเดิม เพราะ sync เสร็จแล้วจริง)
     if(window._doSEFilter){
-      const inp = document.querySelector('#mainContent input[type="text"]');
-      window._doSEFilter(inp ? inp.value : '');
+      const q = document.getElementById('seSearchInput')?.value || '';
+      window._doSEFilter(q);
     }
-    // อัปเดต stock column ในตารางรายการวัตถุดิบด้วย
-    if(document.getElementById('listTable')){
-      const inp2 = document.getElementById('searchInput');
-      onSearchInput(inp2 ? inp2.value : '');
-    }
-    if(mc) mc.scrollTop = 0;
-  }, 100);
+
+    // re-render และ scroll ขึ้นบน
+    const mc = document.getElementById('mainContent');
+    setTimeout(() => {
+      if(window._doSEFilter){
+        const inp = document.querySelector('#mainContent input[type="text"]');
+        window._doSEFilter(inp ? inp.value : '');
+      }
+      // อัปเดต stock column ในตารางรายการวัตถุดิบด้วย
+      if(document.getElementById('listTable')){
+        const inp2 = document.getElementById('searchInput');
+        onSearchInput(inp2 ? inp2.value : '');
+      }
+      if(mc) mc.scrollTop = 0;
+    }, 100);
+  } finally {
+    window._seSaving[itemId] = false;
+    _setBtnState(false);
+  }
 }
 
 function renderStockView(container){
@@ -2698,7 +2714,7 @@ function renderDaily(container){
     filteredEntries.forEach(e => {
       const loc = e.location||'ไม่ระบุ';
       if(!locTotalsDay[loc]) locTotalsDay[loc] = 0;
-      const kg = convertToKg(e.qty, e.unit, e.no);
+      const kg = convertToKg(e.qty, e.unit, e.no, e.kgPerUnit);
       locTotalsDay[loc] = r2(locTotalsDay[loc] + (kg!==null ? kg : e.qty));
     });
     const grandTotalDay = r2(Object.values(locTotalsDay).reduce((a,b)=>a+b,0));
@@ -2744,10 +2760,12 @@ function renderDaily(container){
           <span style="background:#1a5276;color:white;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700">
             รวม ${(()=>{
               if(s.unit === 'กก.' || s.unit === 'kg') return `${s.total.toLocaleString()} ${s.unit}`;
-              const kg = convertToKg(s.total, s.unit, s.no);
+              // ใช้ kgPerUnit ของแถวแรกที่มีค่า เป็นตัวแทนกลุ่ม (ปกติสินค้าเดียวกันจะกำหนดน้ำหนักต่อหน่วยเท่ากัน)
+              const groupWpu = (s.rows.find(row => row.kgPerUnit && parseFloat(row.kgPerUnit) > 0) || {}).kgPerUnit;
+              const kg = convertToKg(s.total, s.unit, s.no, groupWpu);
               if(kg !== null){
                 const wpuMap = {'ตัน':1000,'ton':1000,'bigbag':1000};
-                let wpu = wpuMap[s.unit];
+                let wpu = (groupWpu && parseFloat(groupWpu) > 0) ? parseFloat(groupWpu) : wpuMap[s.unit];
                 if(!wpu){ const item = db.find(r=>r.no===s.no); wpu = item&&item.col2?parseFloat(item.col2):null; }
                 return wpu
                   ? `${s.total.toLocaleString()} ${s.unit} × ${wpu} = ${kg.toLocaleString()} กก.`
@@ -2762,6 +2780,8 @@ function renderDaily(container){
             <th style="padding:4px 10px;text-align:left;color:#666;font-weight:500">Location</th>
             <th style="padding:4px 10px;text-align:left;color:#666;font-weight:500">สถานที่จัดเก็บ</th>
             <th style="padding:4px 10px;text-align:right;color:#666;font-weight:500">จำนวน</th>
+            <th style="padding:4px 10px;text-align:right;color:#666;font-weight:500">นน./หน่วย</th>
+            <th style="padding:4px 10px;text-align:right;color:#666;font-weight:500">รวม (กก.)</th>
             <th style="padding:4px 10px;text-align:left;color:#666;font-weight:500">หมายเหตุ</th>
             <th style="width:70px"></th>
           </tr></thead>
@@ -2773,11 +2793,16 @@ function renderDaily(container){
                 e.storage===r.storage && e.qty===r.qty && 
                 e.unit===r.unit && e.note===r.note
               );
+              const rowKg = convertToKg(r.qty, r.unit, r.no, r.kgPerUnit);
+              const rowWpu = (r.kgPerUnit && parseFloat(r.kgPerUnit) > 0) ? parseFloat(r.kgPerUnit)
+                : (r.unit === 'bigbag' ? 1000 : (r.unit === 'ตัน' ? 1000 : getWeightPerUnit(r.no)));
               return `
             <tr style="border-bottom:1px solid #f5f5f5">
               <td style="padding:4px 10px">${escHtml(r.location)||'-'}</td>
               <td style="padding:4px 10px;color:#777">${escHtml(r.storage)||'-'}</td>
-              <td style="padding:4px 10px;text-align:right;font-weight:600;color:#2874a6">${formatQty(r.qty, r.unit, r.no, r.kgPerUnit)}</td>
+              <td style="padding:4px 10px;text-align:right;font-weight:600;color:#2874a6">${r.qty.toLocaleString()} ${escHtml(r.unit)||''}</td>
+              <td style="padding:4px 10px;text-align:right;color:#777">${rowWpu ? rowWpu.toLocaleString()+' กก.' : '-'}</td>
+              <td style="padding:4px 10px;text-align:right;font-weight:700;color:#1a5276">${rowKg!==null ? rowKg.toLocaleString()+' กก.' : '-'}</td>
               <td style="padding:4px 10px;color:#888;font-size:11px">${escHtml(r.note)||'-'}</td>
               <td style="padding:4px 6px;text-align:right;white-space:nowrap">
                 <button onclick="editDailyEntry('${date}',${ei})"
@@ -2789,7 +2814,7 @@ function renderDaily(container){
             ${(()=>{
               const photos = r.images && r.images.length ? r.images : (r.image ? [r.image] : []);
               if(!photos.length) return '';
-              return '<tr><td colspan="5" style="padding:4px 10px"><div style="display:flex;gap:6px;flex-wrap:wrap">'
+              return '<tr><td colspan="7" style="padding:4px 10px"><div style="display:flex;gap:6px;flex-wrap:wrap">'
                 + photos.map(src=>'<img src="'+src+'" style="width:64px;height:64px;object-fit:cover;border-radius:5px;border:1px solid #eee;cursor:pointer" onclick="window.open(this.src)">').join('')
                 + '</div></td></tr>';
             })()}`;
