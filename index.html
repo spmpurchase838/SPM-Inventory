@@ -265,6 +265,9 @@ td { padding: 8px 12px; vertical-align: middle; }
   grid-template-columns: 1fr 1fr 90px 80px 28px;
   gap: 6px; margin-bottom: 6px;
 }
+.stock-row.stock-row-note {
+  grid-template-columns: 1fr 1fr 90px 70px 1.3fr 28px;
+}
 .stock-row input {
   padding: 6px 9px;
   border: 1px solid var(--rule);
@@ -1950,11 +1953,12 @@ function renderStockEdit(container){
           <button class="btn btn-sm btn-primary" onclick="saveStockItem(${r.id})">บันทึก</button>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 90px 70px 28px;gap:5px;margin-bottom:4px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 90px 70px 1.3fr 28px;gap:5px;margin-bottom:4px">
         <span style="font-size:11px;color:#888">Location</span>
         <span style="font-size:11px;color:#888">สถานที่จัดเก็บ</span>
         <span style="font-size:11px;color:#888">จำนวน</span>
         <span style="font-size:11px;color:#888">หน่วย</span>
+        <span style="font-size:11px;color:#888">หมายเหตุ</span>
         <span></span>
       </div>
       <div id="se_${r.id}"></div>
@@ -2097,15 +2101,16 @@ function addSERow(itemId){
   if(!window._seStocks) window._seStocks = {};
   if(!window._seStocks[itemId]) window._seStocks[itemId] = [];
   const i = window._seStocks[itemId].length;
-  window._seStocks[itemId].push({location:'',loc:'',qty:'',unit:''});
+  window._seStocks[itemId].push({location:'',loc:'',qty:'',unit:'',note:''});
   const container = document.getElementById('se_' + itemId);
   const div = document.createElement('div');
-  div.className = 'stock-row';
+  div.className = 'stock-row stock-row-note';
   div.innerHTML = `
     <input placeholder="Location" oninput="updateSE(${itemId},${i},'location',this.value)">
     <input placeholder="สถานที่จัดเก็บ" oninput="updateSE(${itemId},${i},'loc',this.value)">
     <input placeholder="จำนวน" type="number" min="0" oninput="updateSE(${itemId},${i},'qty',this.value)">
     <input placeholder="หน่วย" oninput="updateSE(${itemId},${i},'unit',this.value)">
+    <input placeholder="หมายเหตุ (ถ้ามี)" oninput="updateSE(${itemId},${i},'note',this.value)">
     <button class="btn-remove" onclick="removeSERow(${itemId},${i})" type="button">×</button>`;
   container.appendChild(div);
 }
@@ -2122,11 +2127,12 @@ function _renderSERows(itemId){
   if(!container) return;
   const stocks = window._seStocks[itemId] || [];
   container.innerHTML = stocks.map((s,i) => {
-    return '<div class="stock-row">' +
+    return '<div class="stock-row stock-row-note">' +
       '<input placeholder="Location" value="'+escHtml(s.location||'')+'" oninput="updateSE('+itemId+','+i+',\'location\',this.value)">' +
       '<input placeholder="สถานที่จัดเก็บ" value="'+escHtml(s.loc||'')+'" oninput="updateSE('+itemId+','+i+',\'loc\',this.value)">' +
       '<input placeholder="จำนวน" type="number" min="0" value="'+(s.qty||'')+'" oninput="updateSE('+itemId+','+i+',\'qty\',this.value)">' +
       '<input placeholder="หน่วย" value="'+escHtml(s.unit||'')+'" oninput="updateSE('+itemId+','+i+',\'unit\',this.value)">' +
+      '<input placeholder="หมายเหตุ (ถ้ามี)" value="'+escHtml(s.note||'')+'" oninput="updateSE('+itemId+','+i+',\'note\',this.value)">' +
       '<button class="btn-remove" onclick="removeSERow('+itemId+','+i+')" type="button">×</button>' +
       '</div>';
   }).join('');
@@ -2214,7 +2220,7 @@ async function saveStockItem(itemId){
       no: r.no, desc: r.desc, code: r.code,
       location: s.location||'', storage: s.loc||'',
       qty: parseFloat(s.qty), unit: s.unit||'',
-      note: '', image: itemImg
+      note: s.note||'', image: itemImg
     });
   });
   _clearStockCache();
@@ -2602,6 +2608,7 @@ function renderDaily(container){
             <th style="padding:4px 10px;text-align:left;color:#666;font-weight:500">Location</th>
             <th style="padding:4px 10px;text-align:left;color:#666;font-weight:500">สถานที่จัดเก็บ</th>
             <th style="padding:4px 10px;text-align:right;color:#666;font-weight:500">จำนวน</th>
+            <th style="padding:4px 10px;text-align:left;color:#666;font-weight:500">หมายเหตุ</th>
             <th style="width:70px"></th>
           </tr></thead>
           <tbody>
@@ -2617,6 +2624,7 @@ function renderDaily(container){
               <td style="padding:4px 10px">${escHtml(r.location)||'-'}</td>
               <td style="padding:4px 10px;color:#777">${escHtml(r.storage)||'-'}</td>
               <td style="padding:4px 10px;text-align:right;font-weight:600;color:#2874a6">${formatQty(r.qty, r.unit, r.no)}</td>
+              <td style="padding:4px 10px;color:#888;font-size:11px">${escHtml(r.note)||'-'}</td>
               <td style="padding:4px 6px;text-align:right;white-space:nowrap">
                 <button onclick="editDailyEntry('${date}',${ei})"
                   style="background:none;border:1px solid #d5d8dc;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px;color:#555;margin-right:3px">✏️</button>
@@ -3145,6 +3153,10 @@ function editDailyEntry(date, entryIdx){
         <input id="edit_unit" value="${_se.unit||''}">
       </div>
     </div>
+    <div class="form-group">
+      <label>หมายเหตุ</label>
+      <input id="edit_note" value="${_se.note||''}" placeholder="หมายเหตุ (ถ้ามี)">
+    </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal()">ยกเลิก</button>
       <button class="btn btn-primary" onclick="saveEditDailyEntry('${date}',${realIdx})">บันทึก</button>
@@ -3160,6 +3172,7 @@ function saveEditDailyEntry(date, realIdx){
     storage:  document.getElementById('edit_storage').value.trim(),
     qty:      parseFloat(document.getElementById('edit_qty').value)||0,
     unit:     document.getElementById('edit_unit').value.trim(),
+    note:     document.getElementById('edit_note').value.trim(),
   };
   closeModal();
   _clearStockCache();
