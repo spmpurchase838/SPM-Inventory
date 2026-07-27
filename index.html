@@ -268,11 +268,13 @@ td { padding: 8px 12px; vertical-align: middle; }
 .stock-row.stock-row-note {
   grid-template-columns: 1fr 1fr 90px 70px 1.3fr 28px;
 }
-.stock-row input {
+.stock-row input, .stock-row select {
   padding: 6px 9px;
   border: 1px solid var(--rule);
   border-radius: 4px;
   font-size: 12px; font-family: inherit;
+  background: white;
+  color: var(--ink);
 }
 .btn-remove {
   background: white;
@@ -689,6 +691,14 @@ const API_TOKEN = _d('797a67756c6f6f6e6763666675181a181e');
 const IMGBB_KEY = '';
 
 const CODE_MAP = {"A001":"Raw Materials","A002":"Liquid & Oil","A003":"Vitamin & Mineral","A004":"Feed additive","A005":"Medicine","A009":"Production for trial","A020":"Raw Materials for sale - bulk","A021":"Raw Materials for sale - Bag","B101":"Semi - RM","B102":"Wip Premix","B103":"WIP ขนมชั้น","C203":"NC - FG Bulk","C204":"NC - FG bag","C209":"NC สารเสริม"};
+
+// ===== รายชื่อ Location คงที่ ให้เลือกแบบบังคับ ไม่ให้พิมพ์เองอิสระ =====
+const LOCATION_OPTIONS = ['โรงงาน 1','โรงงาน 2','โรงงาน 3','โรงงาน 4','คลังวัตถุดิบ','คลังเคมีภัณฑ์'];
+function _locationOptionsHtml(selected){
+  const sel = selected || '';
+  return '<option value="">- เลือก Location -</option>' +
+    LOCATION_OPTIONS.map(loc => `<option value="${loc}" ${sel===loc?'selected':''}>${loc}</option>`).join('');
+}
 
 const CODE_GROUPS = {
   'A': ['A001','A002','A003','A004','A005','A009'],
@@ -1612,7 +1622,7 @@ async function saveEdit(id){
 }
 
 async function deleteItem(id){
-  if(!confirm('ยืนยันการลบรายการนี้?')) return;
+  if(!await customConfirm('ยืนยันการลบรายการนี้?')) return;
   const r = db.find(x=>x.id===id); if(!r) return;
   try {
     const payload = { action: 'deleteItem', token: API_TOKEN, 'No.': r.no };
@@ -1749,6 +1759,29 @@ function showDetail(id){
 
 function closeModal(){ document.getElementById('modalBg').classList.remove('open'); }
 
+// ===== กล่องยืนยันของแอปเอง แทน confirm() ของเบราว์เซอร์ =====
+// (confirm() ดั้งเดิมมักถูกบล็อก/ไม่แสดงผลเมื่อเปิดผ่าน webview ในแอป เช่น LINE, Facebook)
+function customConfirm(message){
+  return new Promise(resolve => {
+    const bg = document.createElement('div');
+    bg.className = 'modal-bg open';
+    bg.style.zIndex = '2000';
+    bg.innerHTML = `
+      <div class="modal" style="max-width:360px">
+        <p style="font-size:14px;color:var(--ink);line-height:1.6;margin-bottom:20px;white-space:pre-line">${escHtml(message)}</p>
+        <div class="modal-footer">
+          <button class="btn btn-outline" id="_ccCancel">ยกเลิก</button>
+          <button class="btn btn-danger" id="_ccOk">ยืนยัน</button>
+        </div>
+      </div>`;
+    document.body.appendChild(bg);
+    const cleanup = (result) => { bg.remove(); resolve(result); };
+    bg.querySelector('#_ccOk').onclick = () => cleanup(true);
+    bg.querySelector('#_ccCancel').onclick = () => cleanup(false);
+    bg.addEventListener('click', e => { if(e.target === bg) cleanup(false); });
+  });
+}
+
 function showSpinner(show){
   // disabled — ป้องกัน iOS Safari ค้าง
 }
@@ -1843,7 +1876,7 @@ function addStockRow(){
   div.className = 'stock-row';
   div.id = 'srow_' + i;
   div.innerHTML = `
-    <input placeholder="Location" oninput="updateStock(${i},'location',this.value)">
+    <select onchange="updateStock(${i},'location',this.value)">${_locationOptionsHtml('')}</select>
     <input placeholder="สถานที่จัดเก็บ" oninput="updateStock(${i},'loc',this.value)">
     <input placeholder="จำนวน" type="number" min="0" oninput="updateStock(${i},'qty',this.value)">
     <input placeholder="หน่วย" oninput="updateStock(${i},'unit',this.value)">
@@ -1862,7 +1895,7 @@ function _renderStockRows(){
   if(!container) return;
   container.innerHTML = pendingStocks.map((s,idx) => `
     <div class="stock-row" id="srow_${idx}">
-      <input placeholder="Location" value="${escHtml(s.location||'')}" oninput="updateStock(${idx},'location',this.value)">
+      <select onchange="updateStock(${idx},'location',this.value)">${_locationOptionsHtml(s.location||'')}</select>
       <input placeholder="สถานที่จัดเก็บ" value="${escHtml(s.loc||'')}" oninput="updateStock(${idx},'loc',this.value)">
       <input placeholder="จำนวน" type="number" min="0" value="${s.qty||''}" oninput="updateStock(${idx},'qty',this.value)">
       <input placeholder="หน่วย" value="${escHtml(s.unit||'')}" oninput="updateStock(${idx},'unit',this.value)">
@@ -2147,7 +2180,7 @@ function addSERow(itemId){
   const div = document.createElement('div');
   div.className = 'stock-row stock-row-note';
   div.innerHTML = `
-    <input placeholder="Location" oninput="updateSE(${itemId},${i},'location',this.value)">
+    <select onchange="updateSE(${itemId},${i},'location',this.value)">${_locationOptionsHtml('')}</select>
     <input placeholder="สถานที่จัดเก็บ" oninput="updateSE(${itemId},${i},'loc',this.value)">
     <input placeholder="จำนวน" type="number" min="0" oninput="updateSE(${itemId},${i},'qty',this.value)">
     <input placeholder="หน่วย" oninput="updateSE(${itemId},${i},'unit',this.value)">
@@ -2169,7 +2202,7 @@ function _renderSERows(itemId){
   const stocks = window._seStocks[itemId] || [];
   container.innerHTML = stocks.map((s,i) => {
     return '<div class="stock-row stock-row-note">' +
-      '<input placeholder="Location" value="'+escHtml(s.location||'')+'" oninput="updateSE('+itemId+','+i+',\'location\',this.value)">' +
+      '<select onchange="updateSE('+itemId+','+i+',\'location\',this.value)">'+_locationOptionsHtml(s.location||'')+'</select>' +
       '<input placeholder="สถานที่จัดเก็บ" value="'+escHtml(s.loc||'')+'" oninput="updateSE('+itemId+','+i+',\'loc\',this.value)">' +
       '<input placeholder="จำนวน" type="number" min="0" value="'+(s.qty||'')+'" oninput="updateSE('+itemId+','+i+',\'qty\',this.value)">' +
       '<input placeholder="หน่วย" value="'+escHtml(s.unit||'')+'" oninput="updateSE('+itemId+','+i+',\'unit\',this.value)">' +
@@ -2553,7 +2586,7 @@ function renderDaily(container){
     return;
   }
 
-  let selectedDate = MOCK_DAILY[MOCK_DAILY.length-1].date; // วันล่าสุด
+  let selectedDate = MOCK_DAILY.reduce((latest, d) => (!latest || d.date > latest) ? d.date : latest, null); // วันล่าสุดจริง ไม่พึ่งลำดับใน array
 
   // ใช้ global เพื่อไม่ให้ reset ทุกครั้ง
   if(!window._dailySelectedLoc) window._dailySelectedLoc = 'all';
@@ -3122,7 +3155,7 @@ function undoDelete(){
 
 // ===== แก้ไข/ลบประวัติรายวัน =====
 async function deleteDailyEntry(date, entryIdx){
-  if(!confirm('ลบรายการนี้?')) return;
+  if(!await customConfirm('ลบรายการนี้?')) return;
   const day = MOCK_DAILY.find(d=>d.date===date);
   if(!day) return;
   // ใช้ entryIdx ตรงๆ ที่ doRender ส่งมาให้แล้ว (index ใน day.entries จริงๆ)
@@ -3187,7 +3220,7 @@ function editDailyEntry(date, entryIdx){
     <div class="form-row">
       <div class="form-group">
         <label>Location</label>
-        <input id="edit_loc" value="${_se.location||''}" placeholder="Location">
+        <select id="edit_loc">${_locationOptionsHtml(normLoc(entry.location||''))}</select>
       </div>
       <div class="form-group">
         <label>สถานที่จัดเก็บ</label>
@@ -3235,7 +3268,8 @@ function saveEditDailyEntry(date, realIdx){
 
 
 function exportDailyPDF(mode='all'){
-  const day = MOCK_DAILY.find(d => d.date === window._currentDay) || MOCK_DAILY[MOCK_DAILY.length-1];
+  const day = MOCK_DAILY.find(d => d.date === window._currentDay)
+    || MOCK_DAILY.slice().sort((a,b)=>b.date.localeCompare(a.date))[0];
   const printDate = new Date().toLocaleDateString('th-TH', {year:'numeric',month:'long',day:'numeric'});
 
   // จัดกลุ่มตาม code
@@ -3411,8 +3445,8 @@ function normLoc(loc){
   if(!loc) return '';
   // ลบ space ส่วนเกิน และ normalize ชื่อโรงงาน
   let s = loc.trim().replace(/\s+/g, ' ');
-  // โรง1 → โรงงาน 1, โรง2 → โรงงาน 2 ฯลฯ
-  s = s.replace(/^โรง(\d+)$/i, 'โรงงาน $1');
+  // โรง1, โรงงาน1, โรงงาน 1 → รวมเป็น โรงงาน 1 แบบเดียวกันเสมอ
+  s = s.replace(/^โรง(?:งาน)?\s*(\d+)$/i, 'โรงงาน $1');
   return s;
 }
 
@@ -3490,8 +3524,8 @@ try {
   if(savedUser) currentUser = savedUser;
 } catch(e) {}
 
-function changeUser(){
-  if(confirm('เปลี่ยนชื่อผู้ใช้งาน?')){
+async function changeUser(){
+  if(await customConfirm('เปลี่ยนชื่อผู้ใช้งาน?')){
     document.getElementById('loginOverlay').style.display = 'flex';
     document.getElementById('loginName').value = currentUser;
     setTimeout(()=>document.getElementById('loginName').focus(),100);
@@ -3540,7 +3574,7 @@ window._toggleDatePicker = () => {
     popup.style.display = 'none';
     return;
   }
-  window._renderDatePickerCalendar(window._currentDay || MOCK_DAILY[0]?.date || '');
+  window._renderDatePickerCalendar(window._currentDay || (MOCK_DAILY.slice().sort((a,b)=>b.date.localeCompare(a.date))[0]?.date) || '');
   popup.style.display = 'block';
   // ปิด popup เมื่อคลิกนอก
   setTimeout(() => {
@@ -3677,7 +3711,7 @@ window._setDailyView = (mode) => {
     if(monthPicker) monthPicker.style.display='none';
     if(btnDay){btnDay.style.background='var(--blue)';btnDay.style.color='white';}
     if(btnMonth){btnMonth.style.background='white';btnMonth.style.color='var(--ink-2)';}
-    if(window._selectDay) window._selectDay(window._currentDay||MOCK_DAILY[0]?.date||'');
+    if(window._selectDay) window._selectDay(window._currentDay||(MOCK_DAILY.slice().sort((a,b)=>b.date.localeCompare(a.date))[0]?.date)||'');
   } else {
     if(dayPicker) dayPicker.style.display='none';
     if(monthPicker) monthPicker.style.display='none';
@@ -4451,8 +4485,8 @@ function _qaClear(){
 
 
 // ===== Clear Daily Data =====
-function _clearAllDailyData(){
-  if(!confirm('ลบข้อมูลบันทึกรับสต็อกทั้งหมด?\nไม่สามารถกู้คืนได้')) return;
+async function _clearAllDailyData(){
+  if(!await customConfirm('ลบข้อมูลบันทึกรับสต็อกทั้งหมด?\nไม่สามารถกู้คืนได้')) return;
   MOCK_DAILY.length = 0;
   localStorage.removeItem('spm_daily_data');
   _clearStockCache();
