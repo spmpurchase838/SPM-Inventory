@@ -1964,15 +1964,15 @@ function renderStockEdit(container){
       <div id="se_${r.id}"></div>
       <button type="button" class="btn btn-sm btn-outline" style="margin-top:6px" onclick="addSERow(${r.id})">+ เพิ่มที่เก็บ</button>
       <div style="margin-top:10px;border-top:1px solid #f0f0f0;padding-top:10px">
-        <div style="font-size:11px;color:#888;margin-bottom:4px">แนบรูปประกอบ (ถ่ายรูปหน้างาน)</div>
+        <div style="font-size:11px;color:#888;margin-bottom:4px">แนบรูปหลักฐาน (ถ่ายได้หลายรูป เช่น ด้านหน้า/ด้านหลัง)</div>
         <div style="display:flex;align-items:center;gap:8px">
           <label style="cursor:pointer;background:#f4f6f9;border:1px solid #d5d8dc;border-radius:6px;padding:5px 12px;font-size:12px;color:#555">
-            📷 เลือกรูป
-            <input type="file" accept="image/*" style="display:none" onchange="uploadSEImg(${r.id}, this)">
+            📷 เลือกรูป (เลือกได้หลายรูป)
+            <input type="file" accept="image/*" multiple style="display:none" onchange="uploadSEImg(${r.id}, this)">
           </label>
           <span id="seimg_status_${r.id}" style="font-size:11px;color:#888"></span>
         </div>
-        <div id="seimg_preview_${r.id}" style="margin-top:6px"></div>
+        <div id="seimg_preview_${r.id}" style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"></div>
       </div>
     </div>`;
   };
@@ -2071,23 +2071,63 @@ function renderStockEdit(container){
 }
 
 // เก็บรูปของแต่ละ item
-if(!window._seImgs) window._seImgs = {};
+if(!window._seImgs) window._seImgs = {}; // { itemId: [base64, base64, ...] }
+const MAX_STOCK_PHOTOS = 3;
 
 async function uploadSEImg(itemId, input){
-  const file = input.files[0];
-  if(!file) return;
+  const files = Array.from(input.files || []);
+  if(!files.length) return;
   const status = document.getElementById('seimg_status_' + itemId);
-  const preview = document.getElementById('seimg_preview_' + itemId);
-  status.textContent = '⏳ กำลังบีบอัดรูป...';
-  try {
-    const base64 = await compressImageToBase64(file);
-    if(!base64) throw new Error('ไม่สามารถประมวลผลรูปได้');
-    preview.innerHTML = `<img src="${base64}" style="max-width:100%;max-height:120px;border-radius:6px;border:1px solid #eee;margin-top:4px">`;
-    window._seImgs[itemId] = base64;
-    status.textContent = '✅ โหลดรูปแล้ว (~' + Math.round(base64.length/1024) + ' KB)';
-  } catch(err){
-    status.textContent = '❌ ประมวลผลรูปไม่สำเร็จ: ' + err.message;
+  if(!window._seImgs[itemId]) window._seImgs[itemId] = [];
+
+  const remainingSlots = MAX_STOCK_PHOTOS - window._seImgs[itemId].length;
+  if(remainingSlots <= 0){
+    showToast('⚠️ แนบรูปได้สูงสุด ' + MAX_STOCK_PHOTOS + ' รูปต่อครั้ง', 'error');
+    input.value = '';
+    return;
   }
+  const toProcess = files.slice(0, remainingSlots);
+  if(files.length > toProcess.length){
+    showToast('⚠️ แนบได้สูงสุด ' + MAX_STOCK_PHOTOS + ' รูป เลือกไว้ให้ ' + toProcess.length + ' รูปแรก', 'error');
+  }
+
+  status.textContent = '⏳ กำลังบีบอัดรูป (0/' + toProcess.length + ')...';
+  for(let i = 0; i < toProcess.length; i++){
+    try {
+      // ใช้ค่าบีบอัดที่เล็กกว่าปกติ เพราะจะเก็บหลายรูปรวมกันใน Sheet เซลล์เดียว
+      const base64 = await compressImageToBase64(toProcess[i], 12000);
+      if(!base64) throw new Error('ไม่สามารถประมวลผลรูปได้');
+      window._seImgs[itemId].push(base64);
+      status.textContent = '⏳ กำลังบีบอัดรูป (' + (i+1) + '/' + toProcess.length + ')...';
+    } catch(err){
+      showToast('❌ รูปที่ ' + (i+1) + ' ประมวลผลไม่สำเร็จ: ' + err.message, 'error');
+    }
+  }
+  input.value = '';
+  status.textContent = '✅ แนบแล้ว ' + window._seImgs[itemId].length + '/' + MAX_STOCK_PHOTOS + ' รูป';
+  _renderSEImgPreview(itemId);
+}
+
+function _renderSEImgPreview(itemId){
+  const preview = document.getElementById('seimg_preview_' + itemId);
+  if(!preview) return;
+  const imgs = window._seImgs[itemId] || [];
+  preview.innerHTML = imgs.map((src, idx) => `
+    <div style="position:relative;display:inline-block">
+      <img src="${src}" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid #eee">
+      <button type="button" onclick="removeSEImg(${itemId},${idx})"
+        style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:#e74c3c;color:white;border:none;font-size:11px;cursor:pointer;line-height:1">✕</button>
+    </div>`).join('');
+}
+
+function removeSEImg(itemId, idx){
+  if(!window._seImgs || !window._seImgs[itemId]) return;
+  window._seImgs[itemId].splice(idx, 1);
+  const status = document.getElementById('seimg_status_' + itemId);
+  if(status) status.textContent = window._seImgs[itemId].length
+    ? '✅ แนบแล้ว ' + window._seImgs[itemId].length + '/' + MAX_STOCK_PHOTOS + ' รูป'
+    : '';
+  _renderSEImgPreview(itemId);
 }
 
 function updateSE(itemId, rowIdx, field, val){
@@ -2214,20 +2254,24 @@ async function saveStockItem(itemId){
     todayRecord.entries = todayRecord.entries.filter(e => e.no !== r.no);
   }
 
-  const itemImg = window._seImgs ? (window._seImgs[itemId]||'') : '';
+  const itemImgs = window._seImgs ? (window._seImgs[itemId]||[]) : [];
   newEntries.forEach(s => {
     todayRecord.entries.push({
       no: r.no, desc: r.desc, code: r.code,
       location: s.location||'', storage: s.loc||'',
       qty: parseFloat(s.qty), unit: s.unit||'',
-      note: s.note||'', image: itemImg
+      note: s.note||'', images: itemImgs
     });
   });
   _clearStockCache();
 
   // reset input
   window._seStocks[itemId] = [{location:'',loc:'',qty:'',unit:''}];
-  if(window._seImgs) delete window._seImgs[itemId];
+  if(window._seImgs) window._seImgs[itemId] = [];
+  const _prevPreview = document.getElementById('seimg_preview_' + itemId);
+  if(_prevPreview) _prevPreview.innerHTML = '';
+  const _prevStatus = document.getElementById('seimg_status_' + itemId);
+  if(_prevStatus) _prevStatus.textContent = '';
   // re-render card นั้นเพื่ออัปเดตยอดสต็อกที่แสดง
   _clearStockCache();
   const cardWrap = document.getElementById('se_' + itemId)?.closest('[id^="secard_"]') || null;
@@ -2632,7 +2676,13 @@ function renderDaily(container){
                   style="background:none;border:1px solid #fcd;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px;color:#e74c3c">🗑️</button>
               </td>
             </tr>
-            ${r.image ? '<tr><td colspan="4" style="padding:4px 10px"><img src="'+r.image+'" style="max-width:120px;max-height:80px;border-radius:5px;border:1px solid #eee"></td></tr>' : ''}`;
+            ${(()=>{
+              const photos = r.images && r.images.length ? r.images : (r.image ? [r.image] : []);
+              if(!photos.length) return '';
+              return '<tr><td colspan="5" style="padding:4px 10px"><div style="display:flex;gap:6px;flex-wrap:wrap">'
+                + photos.map(src=>'<img src="'+src+'" style="width:64px;height:64px;object-fit:cover;border-radius:5px;border:1px solid #eee;cursor:pointer" onclick="window.open(this.src)">').join('')
+                + '</div></td></tr>';
+            })()}`;
             }).join('')}
           </tbody>
         </table>
