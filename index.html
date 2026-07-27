@@ -873,6 +873,7 @@ function showPage(page, pushHistory=true){
     main.classList.add('page-enter'); setTimeout(()=>main.classList.remove('page-enter'), 300);
   } else if(page === 'daily'){
     document.querySelectorAll('.sidebar a')[3].classList.add('active');
+    window._dailySelectedLoc = 'all'; // รีเซ็ตตัวกรอง location ทุกครั้งที่เข้าเมนูนี้ใหม่ กันปัญหาสินค้าดูเหมือนหายเพราะตัวกรองค้าง
     renderDaily(main);
     main.classList.add('page-enter'); setTimeout(()=>main.classList.remove('page-enter'), 300);
   } else {
