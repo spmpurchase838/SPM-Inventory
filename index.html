@@ -3210,6 +3210,9 @@ function editDailyEntry(date, entryIdx){
   const entry = day.entries[entryIdx];
   const realIdx = entryIdx;
 
+  // เตรียมรูปเดิมไว้แก้ไข (รองรับทั้งข้อมูลเก่าแบบ image เดี่ยว และแบบ images array)
+  window._editEntryImgs = (entry.images && entry.images.length) ? [...entry.images] : (entry.image ? [entry.image] : []);
+
   // สร้าง edit modal
   const main = document.getElementById('modalBox');
   document.getElementById('modalBg').classList.add('open');
@@ -3241,15 +3244,86 @@ function editDailyEntry(date, entryIdx){
       <label>หมายเหตุ</label>
       <input id="edit_note" value="${_se.note||''}" placeholder="หมายเหตุ (ถ้ามี)">
     </div>
+    <div class="form-group">
+      <label>รูปหลักฐาน (สูงสุด ${MAX_STOCK_PHOTOS} รูป)</label>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <label style="cursor:pointer;background:#f4f6f9;border:1px solid #d5d8dc;border-radius:6px;padding:5px 12px;font-size:12px;color:#555">
+          📷 เพิ่มรูป
+          <input type="file" accept="image/*" multiple style="display:none" onchange="uploadEditEntryImg(this)">
+        </label>
+        <span id="editimg_status" style="font-size:11px;color:#888"></span>
+      </div>
+      <div id="editimg_preview" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+    </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal()">ยกเลิก</button>
       <button class="btn btn-primary" onclick="saveEditDailyEntry('${date}',${realIdx})">บันทึก</button>
     </div>`;
+  _renderEditEntryImgPreview();
 }
 
-function saveEditDailyEntry(date, realIdx){
+function _renderEditEntryImgPreview(){
+  const preview = document.getElementById('editimg_preview');
+  if(!preview) return;
+  const imgs = window._editEntryImgs || [];
+  preview.innerHTML = imgs.map((src, idx) => `
+    <div style="position:relative;display:inline-block">
+      <img src="${src}" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid #eee">
+      <button type="button" onclick="removeEditEntryImg(${idx})"
+        style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:#e74c3c;color:white;border:none;font-size:11px;cursor:pointer;line-height:1">✕</button>
+    </div>`).join('');
+}
+
+async function uploadEditEntryImg(input){
+  const files = Array.from(input.files || []);
+  if(!files.length) return;
+  const status = document.getElementById('editimg_status');
+  if(!window._editEntryImgs) window._editEntryImgs = [];
+
+  const remainingSlots = MAX_STOCK_PHOTOS - window._editEntryImgs.length;
+  if(remainingSlots <= 0){
+    showToast('⚠️ แนบรูปได้สูงสุด ' + MAX_STOCK_PHOTOS + ' รูป', 'error');
+    input.value = '';
+    return;
+  }
+  const toProcess = files.slice(0, remainingSlots);
+  if(files.length > toProcess.length){
+    showToast('⚠️ แนบได้สูงสุด ' + MAX_STOCK_PHOTOS + ' รูป เลือกไว้ให้ ' + toProcess.length + ' รูปแรก', 'error');
+  }
+
+  status.textContent = '⏳ กำลังบีบอัดรูป (0/' + toProcess.length + ')...';
+  for(let i = 0; i < toProcess.length; i++){
+    try {
+      const base64 = await compressImageToBase64(toProcess[i], 12000);
+      if(!base64) throw new Error('ไม่สามารถประมวลผลรูปได้');
+      window._editEntryImgs.push(base64);
+      status.textContent = '⏳ กำลังบีบอัดรูป (' + (i+1) + '/' + toProcess.length + ')...';
+    } catch(err){
+      showToast('❌ รูปที่ ' + (i+1) + ' ประมวลผลไม่สำเร็จ: ' + err.message, 'error');
+    }
+  }
+  input.value = '';
+  status.textContent = '✅ มีรูป ' + window._editEntryImgs.length + '/' + MAX_STOCK_PHOTOS + ' รูป';
+  _renderEditEntryImgPreview();
+}
+
+function removeEditEntryImg(idx){
+  if(!window._editEntryImgs) return;
+  window._editEntryImgs.splice(idx, 1);
+  const status = document.getElementById('editimg_status');
+  if(status) status.textContent = window._editEntryImgs.length
+    ? '✅ มีรูป ' + window._editEntryImgs.length + '/' + MAX_STOCK_PHOTOS + ' รูป'
+    : '';
+  _renderEditEntryImgPreview();
+}
+
+async function saveEditDailyEntry(date, realIdx){
   const day = MOCK_DAILY.find(d=>d.date===date);
   if(!day || realIdx < 0) return;
+
+  const saveBtn = document.querySelector('.modal-footer .btn-primary');
+  if(saveBtn){ saveBtn.disabled = true; saveBtn.textContent = 'กำลังบันทึก...'; }
+
   day.entries[realIdx] = {
     ...day.entries[realIdx],
     location: document.getElementById('edit_loc').value.trim(),
@@ -3257,12 +3331,37 @@ function saveEditDailyEntry(date, realIdx){
     qty:      parseFloat(document.getElementById('edit_qty').value)||0,
     unit:     document.getElementById('edit_unit').value.trim(),
     note:     document.getElementById('edit_note').value.trim(),
+    images:   window._editEntryImgs || [],
   };
-  closeModal();
+  delete day.entries[realIdx].image; // เลิกใช้ field เดี่ยวแบบเก่า รวมเป็น images array แทน
+
   _clearStockCache();
   _clearDailyIndex();
   _saveDailyData();
-  showToast('✅ แก้ไขเรียบร้อย');
+
+  // sync ไป Google Sheet — เขียนทับข้อมูลของวันนั้นทั้งหมดใหม่ (เดิมฟังก์ชันนี้ไม่เคย sync เลย)
+  try {
+    const payload = {
+      action: 'saveDaily', token: API_TOKEN,
+      date: day.date, date_th: day.date_th,
+      recorded_by: day.recorded_by, entries: day.entries,
+    };
+    const res = await fetch(GS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload),
+      redirect: 'follow',
+    });
+    const json = await res.json();
+    if(!json.ok) throw new Error(json.error || 'แก้ไขไม่สำเร็จ');
+    showToast('✅ แก้ไขเรียบร้อย (sync Sheet แล้ว)');
+  } catch(e) {
+    showToast('⚠️ แก้ไขในเครื่องแล้ว แต่ sync Google Sheet ไม่สำเร็จ: ' + e.message, 'error');
+  }
+
+  if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'บันทึก'; }
+  window._editEntryImgs = null;
+  closeModal();
   document.getElementById('dailyContent').innerHTML = doRender(date);
 }
 
