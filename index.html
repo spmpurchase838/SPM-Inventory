@@ -700,6 +700,20 @@ function _locationOptionsHtml(selected){
     LOCATION_OPTIONS.map(loc => `<option value="${loc}" ${sel===loc?'selected':''}>${loc}</option>`).join('');
 }
 
+// ===== รายชื่อหน่วยคงที่ ให้เลือกแบบบังคับ ไม่ให้พิมพ์เองอิสระ =====
+const UNIT_OPTIONS = [
+  {value:'กก.',     label:'กก. (กิโลกรัม)'},
+  {value:'กระสอบ',  label:'กระสอบ'},
+  {value:'bigbag',  label:'บิ๊กแบ็ค (Bigbag) ≈ 1,000 กก.'},
+  {value:'ถัง',     label:'ถัง'},
+  {value:'ตัน',     label:'ตัน (1,000 กก.)'},
+];
+function _unitOptionsHtml(selected){
+  const sel = selected || '';
+  return '<option value="">- เลือกหน่วย -</option>' +
+    UNIT_OPTIONS.map(u => `<option value="${u.value}" ${sel===u.value?'selected':''}>${u.label}</option>`).join('');
+}
+
 const CODE_GROUPS = {
   'A': ['A001','A002','A003','A004','A005','A009'],
   'B': ['B101','B102','B103'],
@@ -1920,8 +1934,9 @@ function getWeightPerUnit(no){
 // แปลง unit เป็น กก. ถ้าทำได้
 function r2(n){ return parseFloat(parseFloat(n).toFixed(2)); }
 
-function convertToKg(qty, unit, no){
+function convertToKg(qty, unit, no, overrideWpu){
   if(unit === 'กก.' || unit === 'kg') return null;
+  if(overrideWpu && parseFloat(overrideWpu) > 0) return r2(qty * parseFloat(overrideWpu));
   const wpuMap = {
     'กระสอบ': getWeightPerUnit(no),
     'bag':     getWeightPerUnit(no),
@@ -1935,14 +1950,14 @@ function convertToKg(qty, unit, no){
   return r2(qty * wpu);
 }
 
-function formatQty(qty, unit, no){
+function formatQty(qty, unit, no, overrideWpu){
   if(unit === 'กก.' || unit === 'kg') return `${qty.toLocaleString()} ${unit}`;
-  
-  const kg = convertToKg(qty, unit, no);
+
+  const kg = convertToKg(qty, unit, no, overrideWpu);
   if(kg !== null){
     // หา wpu
     const wpuMap = {'ตัน':1000,'ton':1000,'bigbag':1000};
-    let wpu = wpuMap[unit];
+    let wpu = (overrideWpu && parseFloat(overrideWpu) > 0) ? parseFloat(overrideWpu) : wpuMap[unit];
     if(!wpu){
       const item = db.find(r => r.no === no);
       wpu = item && item.col2 ? parseFloat(item.col2) : null;
@@ -2171,22 +2186,74 @@ function updateSE(itemId, rowIdx, field, val){
   window._seStocks[itemId][rowIdx][field] = val;
 }
 
+// เปลี่ยนหน่วย → โชว์/ซ่อนช่องกรอกน้ำหนักต่อหน่วยให้เหมาะกับหน่วยที่เลือก แล้วอัปเดตยอดคำนวณสด
+function _seRowUnitChanged(itemId, i, unit){
+  updateSE(itemId, i, 'unit', unit);
+  const extra = document.getElementById('se_extra_'+itemId+'_'+i);
+  if(!extra) return;
+  const item = db.find(x=>x.id===itemId);
+  if(unit === 'กระสอบ'){
+    const prefill = item && item.col2 ? item.col2 : '';
+    updateSE(itemId, i, 'kgPerUnit', prefill||'');
+    extra.innerHTML = '<label style="font-size:11px;color:#888;display:flex;align-items:center;gap:5px">กก./กระสอบ:'
+      + '<input type="number" min="0" placeholder="เช่น 50" value="'+escHtml(String(prefill||''))+'" style="width:90px;padding:4px 7px;border:1px solid var(--rule);border-radius:4px;font-size:12px"'
+      + ' oninput="updateSE('+itemId+','+i+',\'kgPerUnit\',this.value);_updateSERowPreview('+itemId+','+i+')"></label>';
+  } else if(unit === 'bigbag'){
+    updateSE(itemId, i, 'kgPerUnit', '1000');
+    extra.innerHTML = '<span style="font-size:11px;color:#888">≈ 1,000 กก./ใบ (ค่ามาตรฐาน)</span>';
+  } else {
+    updateSE(itemId, i, 'kgPerUnit', '');
+    extra.innerHTML = '';
+  }
+  _updateSERowPreview(itemId, i);
+}
+
+function _updateSERowPreview(itemId, i){
+  const s = (window._seStocks[itemId]||[])[i];
+  const preview = document.getElementById('se_preview_'+itemId+'_'+i);
+  if(!s || !preview) return;
+  const qty = parseFloat(s.qty);
+  if(!qty || !s.unit){ preview.innerHTML=''; return; }
+  const item = db.find(x=>x.id===itemId);
+  const no = item ? item.no : '';
+  const kg = convertToKg(qty, s.unit, no, s.kgPerUnit);
+  preview.innerHTML = kg!==null ? ('รวม = <b style="color:#1a5276">'+kg.toLocaleString()+' กก.</b>') : '';
+}
+
+function _seExtraHtml(itemId, i, s){
+  if(s.unit === 'กระสอบ'){
+    return '<label style="font-size:11px;color:#888;display:flex;align-items:center;gap:5px">กก./กระสอบ:'
+      + '<input type="number" min="0" placeholder="เช่น 50" value="'+escHtml(String(s.kgPerUnit||''))+'" style="width:90px;padding:4px 7px;border:1px solid var(--rule);border-radius:4px;font-size:12px"'
+      + ' oninput="updateSE('+itemId+','+i+',\'kgPerUnit\',this.value);_updateSERowPreview('+itemId+','+i+')"></label>';
+  }
+  if(s.unit === 'bigbag'){
+    return '<span style="font-size:11px;color:#888">≈ 1,000 กก./ใบ (ค่ามาตรฐาน)</span>';
+  }
+  return '';
+}
+
 function addSERow(itemId){
   if(!window._seStocks) window._seStocks = {};
   if(!window._seStocks[itemId]) window._seStocks[itemId] = [];
   const i = window._seStocks[itemId].length;
-  window._seStocks[itemId].push({location:'',loc:'',qty:'',unit:'',note:''});
+  window._seStocks[itemId].push({location:'',loc:'',qty:'',unit:'',note:'',kgPerUnit:''});
   const container = document.getElementById('se_' + itemId);
-  const div = document.createElement('div');
-  div.className = 'stock-row stock-row-note';
-  div.innerHTML = `
-    <select onchange="updateSE(${itemId},${i},'location',this.value)">${_locationOptionsHtml('')}</select>
-    <input placeholder="สถานที่จัดเก็บ" oninput="updateSE(${itemId},${i},'loc',this.value)">
-    <input placeholder="จำนวน" type="number" min="0" oninput="updateSE(${itemId},${i},'qty',this.value)">
-    <input placeholder="หน่วย" oninput="updateSE(${itemId},${i},'unit',this.value)">
-    <input placeholder="หมายเหตุ (ถ้ามี)" oninput="updateSE(${itemId},${i},'note',this.value)">
-    <button class="btn-remove" onclick="removeSERow(${itemId},${i})" type="button">×</button>`;
-  container.appendChild(div);
+  const wrap = document.createElement('div');
+  wrap.style.marginBottom = '6px';
+  wrap.innerHTML = `
+    <div class="stock-row stock-row-note" style="margin-bottom:3px">
+      <select onchange="updateSE(${itemId},${i},'location',this.value)">${_locationOptionsHtml('')}</select>
+      <input placeholder="สถานที่จัดเก็บ" oninput="updateSE(${itemId},${i},'loc',this.value)">
+      <input placeholder="จำนวน" type="number" min="0" oninput="updateSE(${itemId},${i},'qty',this.value);_updateSERowPreview(${itemId},${i})">
+      <select onchange="_seRowUnitChanged(${itemId},${i},this.value)">${_unitOptionsHtml('')}</select>
+      <input placeholder="หมายเหตุ (ถ้ามี)" oninput="updateSE(${itemId},${i},'note',this.value)">
+      <button class="btn-remove" onclick="removeSERow(${itemId},${i})" type="button">×</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;padding-left:2px">
+      <span id="se_extra_${itemId}_${i}"></span>
+      <span id="se_preview_${itemId}_${i}" style="font-size:11px"></span>
+    </div>`;
+  container.appendChild(wrap);
 }
 
 function removeSERow(itemId, rowIdx){
@@ -2201,15 +2268,21 @@ function _renderSERows(itemId){
   if(!container) return;
   const stocks = window._seStocks[itemId] || [];
   container.innerHTML = stocks.map((s,i) => {
-    return '<div class="stock-row stock-row-note">' +
-      '<select onchange="updateSE('+itemId+','+i+',\'location\',this.value)">'+_locationOptionsHtml(s.location||'')+'</select>' +
-      '<input placeholder="สถานที่จัดเก็บ" value="'+escHtml(s.loc||'')+'" oninput="updateSE('+itemId+','+i+',\'loc\',this.value)">' +
-      '<input placeholder="จำนวน" type="number" min="0" value="'+(s.qty||'')+'" oninput="updateSE('+itemId+','+i+',\'qty\',this.value)">' +
-      '<input placeholder="หน่วย" value="'+escHtml(s.unit||'')+'" oninput="updateSE('+itemId+','+i+',\'unit\',this.value)">' +
-      '<input placeholder="หมายเหตุ (ถ้ามี)" value="'+escHtml(s.note||'')+'" oninput="updateSE('+itemId+','+i+',\'note\',this.value)">' +
-      '<button class="btn-remove" onclick="removeSERow('+itemId+','+i+')" type="button">×</button>' +
-      '</div>';
+    return '<div style="margin-bottom:6px">'
+      + '<div class="stock-row stock-row-note" style="margin-bottom:3px">'
+      + '<select onchange="updateSE('+itemId+','+i+',\'location\',this.value)">'+_locationOptionsHtml(s.location||'')+'</select>'
+      + '<input placeholder="สถานที่จัดเก็บ" value="'+escHtml(s.loc||'')+'" oninput="updateSE('+itemId+','+i+',\'loc\',this.value)">'
+      + '<input placeholder="จำนวน" type="number" min="0" value="'+(s.qty||'')+'" oninput="updateSE('+itemId+','+i+',\'qty\',this.value);_updateSERowPreview('+itemId+','+i+')">'
+      + '<select onchange="_seRowUnitChanged('+itemId+','+i+',this.value)">'+_unitOptionsHtml(s.unit||'')+'</select>'
+      + '<input placeholder="หมายเหตุ (ถ้ามี)" value="'+escHtml(s.note||'')+'" oninput="updateSE('+itemId+','+i+',\'note\',this.value)">'
+      + '<button class="btn-remove" onclick="removeSERow('+itemId+','+i+')" type="button">×</button>'
+      + '</div>'
+      + '<div style="display:flex;align-items:center;gap:12px;padding-left:2px">'
+      + '<span id="se_extra_'+itemId+'_'+i+'">'+_seExtraHtml(itemId, i, s)+'</span>'
+      + '<span id="se_preview_'+itemId+'_'+i+'" style="font-size:11px"></span>'
+      + '</div></div>';
   }).join('');
+  stocks.forEach((s,i) => _updateSERowPreview(itemId, i));
 }
 
 async function saveStockItem(itemId){
@@ -2226,11 +2299,13 @@ async function saveStockItem(itemId){
     const qty = parseFloat(s.qty);
     if(isNaN(qty) || qty <= 0){ showToast('จำนวนต้องเป็นตัวเลขที่มากกว่า 0', 'error'); return; }
     if(qty > 999999){ showToast('จำนวนดูเหมือนผิดปกติ (' + qty.toLocaleString() + ') กรุณาตรวจสอบ', 'error'); return; }
-    if(!s.unit || !s.unit.trim()){ showToast('กรุณาระบุหน่วย', 'error'); return; }
-    // ถ้าเป็น bag และมีน้ำหนักต่อถุง → เก็บ kgPerUnit ไว้ด้วย
-    const isBag = ['กระสอบ','ถุง','bag','bags','sack'].includes((s.unit||'').toLowerCase().trim());
-    if(isBag && s.kgPerUnit && parseFloat(s.kgPerUnit) > 0){
-      s._bagDisplay = qty.toLocaleString() + ' ' + s.unit + ' × ' + s.kgPerUnit + ' กก.';
+    if(!s.unit || !s.unit.trim()){ showToast('กรุณาเลือกหน่วย', 'error'); return; }
+    if(s.unit === 'กระสอบ' && (!s.kgPerUnit || parseFloat(s.kgPerUnit) <= 0)){
+      showToast('กรุณากรอกน้ำหนักต่อกระสอบ (กก./กระสอบ)', 'error');
+      return;
+    }
+    if(s.unit === 'bigbag' && (!s.kgPerUnit || parseFloat(s.kgPerUnit) <= 0)){
+      s.kgPerUnit = '1000'; // ค่ามาตรฐาน เผื่อไม่ได้ตั้งไว้
     }
   }
   if(!newEntries.length){
@@ -2294,6 +2369,7 @@ async function saveStockItem(itemId){
       no: r.no, desc: r.desc, code: r.code,
       location: s.location||'', storage: s.loc||'',
       qty: parseFloat(s.qty), unit: s.unit||'',
+      kgPerUnit: s.kgPerUnit||'',
       note: s.note||'', images: itemImgs
     });
   });
@@ -2701,7 +2777,7 @@ function renderDaily(container){
             <tr style="border-bottom:1px solid #f5f5f5">
               <td style="padding:4px 10px">${escHtml(r.location)||'-'}</td>
               <td style="padding:4px 10px;color:#777">${escHtml(r.storage)||'-'}</td>
-              <td style="padding:4px 10px;text-align:right;font-weight:600;color:#2874a6">${formatQty(r.qty, r.unit, r.no)}</td>
+              <td style="padding:4px 10px;text-align:right;font-weight:600;color:#2874a6">${formatQty(r.qty, r.unit, r.no, r.kgPerUnit)}</td>
               <td style="padding:4px 10px;color:#888;font-size:11px">${escHtml(r.note)||'-'}</td>
               <td style="padding:4px 6px;text-align:right;white-space:nowrap">
                 <button onclick="editDailyEntry('${date}',${ei})"
