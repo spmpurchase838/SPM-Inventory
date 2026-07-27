@@ -1060,7 +1060,7 @@ function renderDashboard(){
   // Recent activity
   const recentDays = MOCK_DAILY.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,3);
   const recentHTML = recentDays.map(day => {
-    const kg = r2(day.entries.reduce((acc,e)=>{ const k=convertToKg(e.qty,e.unit,e.no); return r2(acc+(k!==null?k:0)); },0));
+    const kg = r2(day.entries.reduce((acc,e)=>{ const k=convertToKg(e.qty,e.unit,e.no,e.kgPerUnit); return r2(acc+(k!==null?k:0)); },0));
     return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f5f5f5">
       <div>
         <div style="font-size:12.5px;font-weight:600;color:#1a2535">📅 ${day.date_th}</div>
@@ -2709,13 +2709,18 @@ function renderDaily(container){
       summary[key].rows.push(e);
     });
 
-    // คำนวณ total ต่อ location เป็น กก.
+    // คำนวณ total ต่อ location เป็น กก. — รวมเฉพาะแถวที่คำนวณเป็น กก. ได้จริงเท่านั้น (ไม่เอาจำนวนดิบมาบวกมั่ว)
     const locTotalsDay = {};
+    let skippedCount = 0;
     filteredEntries.forEach(e => {
       const loc = e.location||'ไม่ระบุ';
       if(!locTotalsDay[loc]) locTotalsDay[loc] = 0;
       const kg = convertToKg(e.qty, e.unit, e.no, e.kgPerUnit);
-      locTotalsDay[loc] = r2(locTotalsDay[loc] + (kg!==null ? kg : e.qty));
+      if(kg !== null){
+        locTotalsDay[loc] = r2(locTotalsDay[loc] + kg);
+      } else if(e.unit !== 'กก.' && e.unit !== 'kg') {
+        skippedCount++;
+      }
     });
     const grandTotalDay = r2(Object.values(locTotalsDay).reduce((a,b)=>a+b,0));
     const totalSection = Object.keys(locTotalsDay).length ? `
@@ -2736,6 +2741,7 @@ function renderDaily(container){
             </tr>
           </tbody>
         </table>
+        ${skippedCount > 0 ? `<div style="font-size:11px;color:#c47f17;margin-top:6px">⚠️ มี ${skippedCount} แถวที่ยังไม่มีน้ำหนักต่อหน่วย (นน./หน่วย) จึงไม่ถูกรวมในยอดนี้ — กดแก้ไขแถวนั้นเพื่อกรอกน้ำหนักต่อหน่วยให้ครบ</div>` : ''}
       </div>` : '';
 
     const locBtns = locations.map(loc => `
@@ -3334,13 +3340,17 @@ function editDailyEntry(date, entryIdx){
     <div class="form-row">
       <div class="form-group">
         <label>จำนวน</label>
-        <input id="edit_qty" type="number" value="${entry.qty}" min="0">
+        <input id="edit_qty" type="number" value="${entry.qty}" min="0" oninput="_updateEditEntryPreview()">
       </div>
       <div class="form-group">
         <label>หน่วย</label>
-        <input id="edit_unit" value="${_se.unit||''}">
+        <select id="edit_unit" onchange="_editEntryUnitChanged(this.value)">${_unitOptionsHtml(entry.unit||'')}</select>
       </div>
     </div>
+    <div class="form-group" id="edit_wpu_wrap" style="display:${(entry.unit==='กระสอบ'||entry.unit==='bigbag')?'flex':'none'}">
+      <div id="edit_wpu_extra"></div>
+    </div>
+    <div id="edit_kg_preview" style="font-size:12px;margin:-6px 0 12px 2px"></div>
     <div class="form-group">
       <label>หมายเหตุ</label>
       <input id="edit_note" value="${_se.note||''}" placeholder="หมายเหตุ (ถ้ามี)">
@@ -3360,7 +3370,45 @@ function editDailyEntry(date, entryIdx){
       <button class="btn btn-outline" onclick="closeModal()">ยกเลิก</button>
       <button class="btn btn-primary" onclick="saveEditDailyEntry('${date}',${realIdx})">บันทึก</button>
     </div>`;
+  window._editEntryKgPerUnit = entry.kgPerUnit || '';
   _renderEditEntryImgPreview();
+  _editEntryUnitChanged(entry.unit||'', true);
+}
+
+// เปลี่ยนหน่วย → โชว์/ซ่อนช่องกรอกน้ำหนักต่อหน่วยให้เหมาะสม แล้วอัปเดตยอดคำนวณสด
+function _editEntryUnitChanged(unit, isInitial){
+  const wrap = document.getElementById('edit_wpu_wrap');
+  const extra = document.getElementById('edit_wpu_extra');
+  if(!wrap || !extra) return;
+  if(unit === 'กระสอบ'){
+    wrap.style.display = 'flex';
+    const prefill = window._editEntryKgPerUnit || '';
+    extra.innerHTML = '<label style="font-size:12px;color:#7a8fa6;display:flex;align-items:center;gap:6px">กก./กระสอบ:'
+      + '<input type="number" min="0" placeholder="เช่น 50" id="edit_wpu" value="'+escHtml(String(prefill||''))+'" style="width:100px;padding:6px 9px;border:1px solid var(--rule);border-radius:4px;font-size:13px"'
+      + ' oninput="window._editEntryKgPerUnit=this.value;_updateEditEntryPreview()"></label>';
+  } else if(unit === 'bigbag'){
+    wrap.style.display = 'flex';
+    if(!window._editEntryKgPerUnit || parseFloat(window._editEntryKgPerUnit) <= 0) window._editEntryKgPerUnit = '1000';
+    extra.innerHTML = '<span style="font-size:12px;color:#7a8fa6">≈ 1,000 กก./ใบ (ค่ามาตรฐาน)</span>';
+  } else {
+    wrap.style.display = 'none';
+    extra.innerHTML = '';
+    window._editEntryKgPerUnit = '';
+  }
+  _updateEditEntryPreview();
+}
+
+function _updateEditEntryPreview(){
+  const preview = document.getElementById('edit_kg_preview');
+  if(!preview) return;
+  const qtyEl = document.getElementById('edit_qty');
+  const unitEl = document.getElementById('edit_unit');
+  if(!qtyEl || !unitEl){ preview.innerHTML=''; return; }
+  const qty = parseFloat(qtyEl.value);
+  const unit = unitEl.value;
+  if(!qty || !unit){ preview.innerHTML=''; return; }
+  const kg = convertToKg(qty, unit, '', window._editEntryKgPerUnit);
+  preview.innerHTML = kg!==null ? ('รวม = <b style="color:#1a5276">'+kg.toLocaleString()+' กก.</b>') : '';
 }
 
 function _renderEditEntryImgPreview(){
@@ -3425,12 +3473,23 @@ async function saveEditDailyEntry(date, realIdx){
   const saveBtn = document.querySelector('.modal-footer .btn-primary');
   if(saveBtn){ saveBtn.disabled = true; saveBtn.textContent = 'กำลังบันทึก...'; }
 
+  const editUnit = document.getElementById('edit_unit').value.trim();
+  if(editUnit === 'กระสอบ' && (!window._editEntryKgPerUnit || parseFloat(window._editEntryKgPerUnit) <= 0)){
+    showToast('กรุณากรอกน้ำหนักต่อกระสอบ (กก./กระสอบ)', 'error');
+    if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'บันทึก'; }
+    return;
+  }
+  if(editUnit === 'bigbag' && (!window._editEntryKgPerUnit || parseFloat(window._editEntryKgPerUnit) <= 0)){
+    window._editEntryKgPerUnit = '1000';
+  }
+
   day.entries[realIdx] = {
     ...day.entries[realIdx],
     location: document.getElementById('edit_loc').value.trim(),
     storage:  document.getElementById('edit_storage').value.trim(),
     qty:      parseFloat(document.getElementById('edit_qty').value)||0,
-    unit:     document.getElementById('edit_unit').value.trim(),
+    unit:     editUnit,
+    kgPerUnit: (editUnit === 'กระสอบ' || editUnit === 'bigbag') ? (window._editEntryKgPerUnit||'') : '',
     note:     document.getElementById('edit_note').value.trim(),
     images:   window._editEntryImgs || [],
   };
@@ -3462,6 +3521,7 @@ async function saveEditDailyEntry(date, realIdx){
 
   if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'บันทึก'; }
   window._editEntryImgs = null;
+  window._editEntryKgPerUnit = null;
   closeModal();
   document.getElementById('dailyContent').innerHTML = doRender(date);
 }
@@ -3974,8 +4034,8 @@ window._selectMonth = (ym) => {
     day.entries.forEach(e=>{
       const loc=normLoc(e.location||'');
       if(!totals[loc])totals[loc]=0;
-      const kg=convertToKg(e.qty,e.unit,e.no);
-      totals[loc]=r2(totals[loc]+(kg!==null?kg:e.qty));
+      const kg=convertToKg(e.qty,e.unit,e.no,e.kgPerUnit);
+      if(kg!==null) totals[loc]=r2(totals[loc]+kg);
     });
   });
   const grand=r2(Object.values(totals).reduce((a,b)=>a+b,0));
@@ -3996,7 +4056,7 @@ window._selectMonth = (ym) => {
   // แต่ละวัน accordion
   days.forEach((day,i)=>{
     const ne=day.entries.map(e=>Object.assign({},e,{location:normLoc(e.location||'')}));
-    const dayKg=r2(ne.reduce((acc,e)=>{const k=convertToKg(e.qty,e.unit,e.no);return r2(acc+(k!==null?k:e.qty));},0));
+    const dayKg=r2(ne.reduce((acc,e)=>{const k=convertToKg(e.qty,e.unit,e.no,e.kgPerUnit);return r2(acc+(k!==null?k:0));},0));
     const id='macc'+i;
     const sm={};
     ne.forEach(e=>{const key=e.no+'|'+e.unit;if(!sm[key])sm[key]={no:e.no,desc:e.desc,code:e.code,unit:e.unit,rows:[]};sm[key].rows.push(e);});
