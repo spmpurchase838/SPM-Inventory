@@ -3441,6 +3441,19 @@ function exportDailyPDF(mode='all'){
 
 
 // ===== Helper: Normalize location name =====
+// ===== แปลงค่าวันที่ให้เป็นข้อความ YYYY-MM-DD เสมอ (กันข้อมูลเก่าที่เพี้ยนจาก Google Sheets แปลงเป็น Date อัตโนมัติ) =====
+function normDateStr(val){
+  if(!val) return '';
+  const s = String(val).trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  if(!isNaN(d.getTime())){
+    const pad = n => String(n).padStart(2,'0');
+    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
+  }
+  return s;
+}
+
 function normLoc(loc){
   if(!loc) return '';
   // ลบ space ส่วนเกิน และ normalize ชื่อโรงงาน
@@ -3561,10 +3574,12 @@ window.addEventListener('offline', () => showToast('⚠️ ไม่มีสั
 
 
 window._formatThDate = (dateStr) => {
-  if(!dateStr) return '';
+  if(!dateStr) return '- เลือกวันที่ -';
   const MN = 'ม.ค. ก.พ. มี.ค. เม.ย. พ.ค. มิ.ย. ก.ค. ส.ค. ก.ย. ต.ค. พ.ย. ธ.ค.'.split(' ');
-  const p = dateStr.split('-');
-  return parseInt(p[2]) + ' ' + MN[parseInt(p[1])-1] + ' ' + (parseInt(p[0])+543);
+  const p = String(dateStr).split('-');
+  const day = parseInt(p[2]), month = parseInt(p[1]), year = parseInt(p[0]);
+  if(!day || !month || !year || isNaN(day) || isNaN(month) || isNaN(year)) return String(dateStr);
+  return day + ' ' + (MN[month-1]||'') + ' ' + (year+543);
 };
 
 window._toggleDatePicker = () => {
@@ -3721,7 +3736,9 @@ window._setDailyView = (mode) => {
     const MN='มกราคม กุมภาพันธ์ มีนาคม เมษายน พฤษภาคม มิถุนายน กรกฎาคม สิงหาคม กันยายน ตุลาคม พฤศจิกายน ธันวาคม'.split(' ');
     const monthMap={};
     MOCK_DAILY.forEach(d=>{
-      const ym=d.date.slice(0,7);
+      const dd = normDateStr(d.date);
+      if(!dd) return;
+      const ym=dd.slice(0,7);
       if(!monthMap[ym])monthMap[ym]={count:0,items:0};
       monthMap[ym].count++;
       monthMap[ym].items+=d.entries.length;
