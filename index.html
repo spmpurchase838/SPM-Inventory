@@ -588,7 +588,7 @@ tbody tr:hover {
   <div id="globalSearchWrap" style="flex:1;max-width:320px;position:relative;margin:0 12px">
     <input id="globalSearchInput" type="text" placeholder="🔍 ค้นหา No. / ชื่อสินค้า..."
       style="width:100%;padding:6px 12px;border-radius:20px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:white;font-size:12.5px;font-family:inherit;outline:none"
-      oninput="globalSearch(this.value)"
+      oninput="debouncedGlobalSearch(this.value)"
       onkeydown="if(event.key==='Escape'){this.value='';globalSearch('')}"
     >
     <div id="globalSearchResults" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;background:white;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.15);z-index:200;max-height:360px;overflow-y:auto;border:1px solid var(--rule)"></div>
@@ -1134,7 +1134,7 @@ function renderList(){
   if(!hasSearch){
     document.getElementById('mainContent').innerHTML = 
       '<div class="topbar">' +
-      '<input type="text" id="searchInput" placeholder="ค้นหา No. / Description / Code..." value="' + searchQ + '" oninput="onSearchInput(this.value)">' +
+      '<input type="text" id="searchInput" placeholder="ค้นหา No. / Description / Code..." value="' + searchQ + '" oninput="debouncedOnSearchInput(this.value)">' +
       '<button class="btn btn-primary" onclick="showAddModal()">+ เพิ่มรายการ</button>' +
       '</div>' +
       '<div id="listSubtitle" style="font-size:12px;color:#888;margin-bottom:8px"></div>' +
@@ -1179,8 +1179,8 @@ function renderListTable(slice){
       const {qtyCell, kgCell} = getStock(r);
       const img = (r.image || r.image2)
         ? '<div style="display:flex;gap:4px">'
-          + (r.image  ? '<img class="thumb" src="'+r.image+'" onclick="showDetail('+r.id+')" style="width:44px;height:44px" title="รูปสินค้า">' : '')
-          + (r.image2 ? '<img class="thumb" src="'+r.image2+'" onclick="showDetail('+r.id+')" style="width:44px;height:44px" title="รูปแบบบรรจุภัณฑ์">' : '')
+          + (r.image  ? '<img class="thumb" loading="lazy" decoding="async" src="'+r.image+'" onclick="showDetail('+r.id+')" style="width:44px;height:44px" title="รูปสินค้า">' : '')
+          + (r.image2 ? '<img class="thumb" loading="lazy" decoding="async" src="'+r.image2+'" onclick="showDetail('+r.id+')" style="width:44px;height:44px" title="รูปแบบบรรจุภัณฑ์">' : '')
           + '</div>'
         : '';
       return '<div style="background:white;border:1px solid var(--rule);border-radius:8px;padding:12px;margin-bottom:8px" oncontextmenu="showQuickAction(event,'+r.id+')" ontouchstart="_qaTouch(event,'+r.id+')" ontouchend="_qaClear()">'+
@@ -1216,8 +1216,8 @@ function renderListTable(slice){
       const {qtyCell, kgCell} = getStock(r);
       const img = (r.image || r.image2)
         ? '<div style="display:flex;gap:4px">'
-          + (r.image  ? '<img class="thumb" src="'+r.image+'" onclick="showDetail('+r.id+')" title="รูปสินค้า">' : '')
-          + (r.image2 ? '<img class="thumb" src="'+r.image2+'" onclick="showDetail('+r.id+')" title="รูปแบบบรรจุภัณฑ์">' : '')
+          + (r.image  ? '<img class="thumb" loading="lazy" decoding="async" src="'+r.image+'" onclick="showDetail('+r.id+')" title="รูปสินค้า">' : '')
+          + (r.image2 ? '<img class="thumb" loading="lazy" decoding="async" src="'+r.image2+'" onclick="showDetail('+r.id+')" title="รูปแบบบรรจุภัณฑ์">' : '')
           + '</div>'
         : '<div class="no-img">ไม่มี</div>';
       return '<tr oncontextmenu="showQuickAction(event,'+r.id+')" style="cursor:context-menu">' +
@@ -2118,7 +2118,7 @@ function renderStockEdit(container){
     wrap.innerHTML = result || emptyState('🔍','ไม่พบสินค้าใน Group นี้');
   };
 
-  window._doSEFilter = doFilter;
+  window._doSEFilter = _debounce(doFilter, 200);
 }
 
 // เก็บรูปของแต่ละ item
@@ -3931,7 +3931,7 @@ window._pickDate = (date) => {
   if(window._selectDay) window._selectDay(date);
 };
 
-window._filterDailySearch = (q) => {
+window._filterDailySearch = _debounce((q) => {
   const content = document.getElementById('dailyContent');
   if(!content) return;
   q = q.trim().toLowerCase();
@@ -3975,7 +3975,7 @@ window._filterDailySearch = (q) => {
     html += '</div>';
   });
   content.innerHTML = html;
-};
+}, 200);
 
 window._setDailyView = (mode) => {
   const dayPicker = document.getElementById('dailyDatePicker');
@@ -4274,6 +4274,17 @@ function emptyState(icon, title, subtitle=''){
 
 
 // ===== Security: HTML Escape =====
+// ===== Debounce: ลดการ re-render ถี่เกินไปตอนพิมพ์ค้นหา (ลดอาการหน่วงบนมือถือ) =====
+function _debounce(fn, wait){
+  let t;
+  return function(...args){
+    clearTimeout(t);
+    t = setTimeout(() => fn.apply(this, args), wait);
+  };
+}
+const debouncedGlobalSearch = _debounce(globalSearch, 200);
+const debouncedOnSearchInput = _debounce(onSearchInput, 200);
+
 function escHtml(str){
   return String(str)
     .replace(/&/g, '&amp;')
