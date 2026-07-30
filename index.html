@@ -705,6 +705,7 @@ const UNIT_OPTIONS = [
   {value:'กก.',     label:'กก. (กิโลกรัม)'},
   {value:'กระสอบ',  label:'กระสอบ'},
   {value:'bigbag',  label:'บิ๊กแบ็ค (Bigbag) ≈ 1,000 กก.'},
+  {value:'เบาท์',   label:'เบาท์ (Bulk)'},
   {value:'ถัง',     label:'ถัง'},
   {value:'ตัน',     label:'ตัน (1,000 กก.)'},
 ];
@@ -1941,6 +1942,7 @@ function convertToKg(qty, unit, no, overrideWpu){
     'กระสอบ': getWeightPerUnit(no),
     'bag':     getWeightPerUnit(no),
     'ถัง':     null,
+    'เบาท์':   null,
     'bigbag':  1000,
     'ตัน':     1000,
     'ton':     1000,
