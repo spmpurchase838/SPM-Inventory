@@ -2797,7 +2797,7 @@ function renderDaily(container){
             ${s.rows.map(r=>{
               // ใช้ index ใน day.entries จริงๆ เพื่อป้องกันแก้/ลบผิด entry
               const ei = day.entries.findIndex(e=>
-                e.no===r.no && e.location===r.location && 
+                e.no===r.no && normLoc(e.location||'')===r.location && 
                 e.storage===r.storage && e.qty===r.qty && 
                 e.unit===r.unit && e.note===r.note
               );
