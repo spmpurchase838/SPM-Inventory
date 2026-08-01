@@ -2301,7 +2301,14 @@ async function saveStockItem(itemId, btnEl){
     const btn = btnEl || document.querySelector(`button[onclick^="saveStockItem(${itemId}"]`);
     if(btn){ btn.disabled = saving; btn.textContent = saving ? '⏳ กำลังบันทึก...' : '+ บวกเพิ่ม'; }
   };
+  const _showSavingOverlay = (show, msg) => {
+    const loader = document.getElementById('pageLoader');
+    const loaderMsg = document.getElementById('pageLoaderMsg');
+    if(loaderMsg) loaderMsg.textContent = msg || 'กำลังบันทึก...';
+    if(loader) loader.style.display = show ? 'flex' : 'none';
+  };
   _setBtnState(true);
+  _showSavingOverlay(true, '⏳ กำลังบันทึก ' + (r.desc||r.no) + ' ...');
   showToast('⏳ กำลังบันทึก ' + (r.desc||r.no) + ' ...');
 
   try {
@@ -2457,6 +2464,7 @@ async function saveStockItem(itemId, btnEl){
   } finally {
     window._seSaving[itemId] = false;
     _setBtnState(false);
+    _showSavingOverlay(false);
   }
 }
 
@@ -3474,11 +3482,16 @@ async function saveEditDailyEntry(date, realIdx){
 
   const saveBtn = document.querySelector('.modal-footer .btn-primary');
   if(saveBtn){ saveBtn.disabled = true; saveBtn.textContent = 'กำลังบันทึก...'; }
+  const loader = document.getElementById('pageLoader');
+  const loaderMsg = document.getElementById('pageLoaderMsg');
+  if(loaderMsg) loaderMsg.textContent = '⏳ กำลังบันทึกการแก้ไข...';
+  if(loader) loader.style.display = 'flex';
 
   const editUnit = document.getElementById('edit_unit').value.trim();
   if(editUnit === 'กระสอบ' && (!window._editEntryKgPerUnit || parseFloat(window._editEntryKgPerUnit) <= 0)){
     showToast('กรุณากรอกน้ำหนักต่อกระสอบ (กก./กระสอบ)', 'error');
     if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'บันทึก'; }
+    if(loader) loader.style.display = 'none';
     return;
   }
   if(editUnit === 'bigbag' && (!window._editEntryKgPerUnit || parseFloat(window._editEntryKgPerUnit) <= 0)){
@@ -3522,6 +3535,7 @@ async function saveEditDailyEntry(date, realIdx){
   }
 
   if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'บันทึก'; }
+  if(loader) loader.style.display = 'none';
   window._editEntryImgs = null;
   window._editEntryKgPerUnit = null;
   closeModal();
