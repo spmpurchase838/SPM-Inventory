@@ -428,6 +428,15 @@ tbody tr:hover {
 .qa-item.danger:hover { background: #fef2f2; }
 .qa-sep { height: 1px; background: var(--rule); margin: 4px 0; }
 
+/* ── ประวัติสต็อกรายวัน: ตารางบนคอม / การ์ดบนมือถือ ── */
+.table-view-mobile { display: none; }
+.se-hist-card {
+  background: white;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
 /* ── Pagination ── */
 .pagination { display: flex; gap: 3px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
 .pagination button {
@@ -474,6 +483,10 @@ tbody tr:hover {
 
 /* ── Mobile ── */
 @media (max-width: 768px) {
+  /* ประวัติสต็อกรายวัน: สลับจากตารางเป็นการ์ด */
+  .table-view-desktop { display: none !important; }
+  .table-view-mobile { display: block !important; }
+
   /* Header */
   header { padding: 0 14px; height: 52px; gap: 8px; }
   header h1 { font-size: 13px; }
@@ -2799,7 +2812,7 @@ function renderDaily(container){
             })()}
           </span>
         </div>
-        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+        <div class="table-view-desktop" style="overflow-x:auto;-webkit-overflow-scrolling:touch">
         <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:560px">
           <thead><tr style="background:#f4f6f9">
             <th style="padding:4px 10px;text-align:left;color:#666;font-weight:500">Location</th>
@@ -2846,6 +2859,37 @@ function renderDaily(container){
             }).join('')}
           </tbody>
         </table>
+        </div>
+        <div class="table-view-mobile">
+          ${s.rows.map(r=>{
+            const ei = day.entries.findIndex(e=>
+              e.no===r.no && normLoc(e.location||'')===r.location && 
+              e.storage===r.storage && e.qty===r.qty && 
+              e.unit===r.unit && e.note===r.note
+            );
+            const rowKg = convertToKg(r.qty, r.unit, r.no, r.kgPerUnit);
+            const rowWpu = (r.kgPerUnit && parseFloat(r.kgPerUnit) > 0) ? parseFloat(r.kgPerUnit)
+              : (r.unit === 'bigbag' ? 1000 : (r.unit === 'ตัน' ? 1000 : getWeightPerUnit(r.no)));
+            const photos = r.images && r.images.length ? r.images : (r.image ? [r.image] : []);
+            return `
+            <div class="se-hist-card">
+              <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:6px">
+                <div style="font-size:13px;font-weight:600;color:var(--ink)">📍 ${escHtml(r.location)||'-'}</div>
+                <div style="font-size:13px;font-weight:700;color:#2874a6;white-space:nowrap">${r.qty.toLocaleString()} ${escHtml(r.unit)||''}</div>
+              </div>
+              <div style="font-size:11px;color:#888;margin-bottom:6px">สถานที่: ${escHtml(r.storage)||'-'}</div>
+              <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px;padding:6px 0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)">
+                <span style="color:#777">นน./หน่วย: ${rowWpu ? rowWpu.toLocaleString()+' กก.' : '-'}</span>
+                <span style="font-weight:700;color:#1a5276">รวม: ${rowKg!==null ? rowKg.toLocaleString()+' กก.' : '-'}</span>
+              </div>
+              ${r.note ? `<div style="font-size:12px;color:#888;margin-bottom:6px">📝 ${escHtml(r.note)}</div>` : ''}
+              ${photos.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${photos.map(src=>'<img src="'+src+'" style="width:56px;height:56px;object-fit:cover;border-radius:5px;border:1px solid #eee;cursor:pointer" onclick="window.open(this.src)">').join('')}</div>` : ''}
+              <div style="display:flex;gap:8px">
+                <button onclick="editDailyEntry('${date}',${ei})" style="flex:1;padding:8px;background:white;border:1px solid var(--rule);border-radius:6px;font-size:13px;color:var(--ink-2);display:flex;align-items:center;justify-content:center;gap:5px">✏️ แก้ไข</button>
+                <button onclick="deleteDailyEntry('${date}',${ei})" style="flex:1;padding:8px;background:white;border:1px solid #fcd;border-radius:6px;font-size:13px;color:#e74c3c;display:flex;align-items:center;justify-content:center;gap:5px">🗑️ ลบ</button>
+              </div>
+            </div>`;
+          }).join('')}
         </div>
       </div>`).join('');
 
