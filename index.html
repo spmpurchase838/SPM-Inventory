@@ -29,6 +29,9 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* ป้องกันทั้งเว็บไม่ให้เลื่อนซ้าย-ขวาทั้งหน้า ไม่ว่า element ไหนจะล้นก็ตาม (สำคัญมากสำหรับมือถือ) */
+html, body { overflow-x: hidden; max-width: 100vw; }
+
 body {
   font-family: 'IBM Plex Sans Thai', system-ui, sans-serif;
   background: var(--bg);
@@ -59,7 +62,7 @@ header h1 {
 header span { font-size: 11px; opacity: .5; margin-left: auto; font-family: 'IBM Plex Mono', monospace; }
 
 /* ── Layout ── */
-.layout { display: flex; height: calc(100vh - 52px); }
+.layout { display: flex; height: calc(100vh - 52px); height: calc(100dvh - 52px); }
 
 /* ── Sidebar ── */
 .sidebar {
@@ -275,6 +278,7 @@ td { padding: 8px 12px; vertical-align: middle; }
   font-size: 12px; font-family: inherit;
   background: white;
   color: var(--ink);
+  min-width: 0; width: 100%;
 }
 .btn-remove {
   background: white;
@@ -480,7 +484,7 @@ tbody tr:hover {
   #hdrCount { font-size: 10px; }
 
   /* Layout */
-  .layout { flex-direction: column; height: auto; min-height: calc(100vh - 52px); }
+  .layout { flex-direction: column; height: auto; min-height: calc(100vh - 52px); min-height: calc(100dvh - 52px); }
 
   /* Sidebar - slide in from left */
   .sidebar {
@@ -488,6 +492,7 @@ tbody tr:hover {
     top: 52px; left: 0;
     width: 75vw; max-width: 280px;
     height: calc(100vh - 52px);
+    height: calc(100dvh - 52px);
     transform: translateX(-100%);
     transition: transform .25s cubic-bezier(.4,0,.2,1);
     z-index: 40;
@@ -524,6 +529,9 @@ tbody tr:hover {
   .modal { padding: 16px; margin: 0; border-radius: 8px; }
   .modal h2 { font-size: 14px; }
   .stock-row { grid-template-columns: 1fr 1fr; gap: 5px; }
+  .stock-row.stock-row-note { grid-template-columns: 1fr 1fr; gap: 5px; }
+  .se-row-header { display: none !important; }
+  .stock-row input, .stock-row select { font-size: 16px; padding: 8px 9px; }
 
   /* Cards */
   .card { padding: 14px; }
@@ -2004,7 +2012,7 @@ function renderStockEdit(container){
           <button class="btn btn-sm btn-primary" onclick="saveStockItem(${r.id}, this)">บันทึก</button>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 90px 70px 1.3fr 28px;gap:5px;margin-bottom:4px">
+      <div class="se-row-header" style="display:grid;grid-template-columns:1fr 1fr 90px 70px 1.3fr 28px;gap:5px;margin-bottom:4px">
         <span style="font-size:11px;color:#888">Location</span>
         <span style="font-size:11px;color:#888">สถานที่จัดเก็บ</span>
         <span style="font-size:11px;color:#888">จำนวน</span>
@@ -2791,7 +2799,8 @@ function renderDaily(container){
             })()}
           </span>
         </div>
-        <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:560px">
           <thead><tr style="background:#f4f6f9">
             <th style="padding:4px 10px;text-align:left;color:#666;font-weight:500">Location</th>
             <th style="padding:4px 10px;text-align:left;color:#666;font-weight:500">สถานที่จัดเก็บ</th>
@@ -2837,6 +2846,7 @@ function renderDaily(container){
             }).join('')}
           </tbody>
         </table>
+        </div>
       </div>`).join('');
 
     return `
