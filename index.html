@@ -2676,6 +2676,57 @@ function _saveDailyData(){
 let MOCK_DAILY = _loadDailyData();
 
 // ===== หน้าประวัติสต็อกรายวัน =====
+// ป้องกันปัญหา webview บางแอป (เช่น LINE) ไม่อ่านขนาดจอตามจริง ทำให้ CSS media query ไม่ทำงาน
+// ใช้ JS เช็คขนาดจอจริงแล้วบังคับ style ตรงๆ แทน + MutationObserver คอยเช็คซ้ำทุกครั้งที่มีเนื้อหาใหม่
+function _applyMobileFixes(){
+  const isMobile = window.innerWidth <= 768;
+
+  document.querySelectorAll('.table-view-desktop').forEach(el => { el.style.display = isMobile ? 'none' : ''; });
+  document.querySelectorAll('.table-view-mobile').forEach(el => { el.style.display = isMobile ? 'block' : 'none'; });
+
+  document.querySelectorAll('.stock-row.stock-row-note').forEach(el => {
+    el.style.gridTemplateColumns = isMobile ? '1fr 1fr' : '';
+    el.style.gap = isMobile ? '5px' : '';
+  });
+  document.querySelectorAll('.se-row-header').forEach(el => { el.style.display = isMobile ? 'none' : ''; });
+  document.querySelectorAll('.stock-row input, .stock-row select').forEach(el => {
+    el.style.fontSize = isMobile ? '16px' : '';
+    el.style.minWidth = '0';
+    el.style.width = '100%';
+  });
+}
+function _fixMobileTableToggle(){ _applyMobileFixes(); }
+window.addEventListener('resize', _applyMobileFixes);
+window.addEventListener('orientationchange', _applyMobileFixes);
+
+// คอยเช็คซ้ำอัตโนมัติทุกครั้งที่มีการเปลี่ยนแปลงเนื้อหาในหน้า (กันกรณีเรียก render จากจุดที่ลืมเรียกฟังก์ชันนี้)
+// debounce ไว้กันไม่ให้รันถี่เกินไปตอนมีการเปลี่ยนแปลง DOM รัวๆ (เช่น re-render บ่อยๆ)
+function _debounceEarly(fn, wait){
+  let t;
+  return function(...args){
+    clearTimeout(t);
+    t = setTimeout(() => fn.apply(this, args), wait);
+  };
+}
+const _mobileFixObserver = new MutationObserver(_debounceEarly(() => { _applyMobileFixes(); }, 150));
+document.addEventListener('DOMContentLoaded', () => {
+  const mainContent = document.getElementById('mainContent');
+  if(mainContent) _mobileFixObserver.observe(mainContent, { childList: true, subtree: true });
+  _applyMobileFixes();
+});
+// เผื่อ DOMContentLoaded ยิงไปแล้วก่อนสคริปต์นี้โหลด (เช่น สคริปต์อยู่ท้ายหน้า)
+if(document.readyState !== 'loading'){
+  const mainContent = document.getElementById('mainContent');
+  if(mainContent) _mobileFixObserver.observe(mainContent, { childList: true, subtree: true });
+  _applyMobileFixes();
+}
+
+function _setDailyContent(html){
+  const el = document.getElementById('dailyContent');
+  if(el) el.innerHTML = html;
+  _applyMobileFixes();
+}
+
 function renderDaily(container){
   // ถ้าไม่มีข้อมูลเลย แสดง empty state
   if(!MOCK_DAILY || !MOCK_DAILY.length){
@@ -2886,7 +2937,7 @@ function renderDaily(container){
 
   window._selectLoc = (loc, date) => {
     window._dailySelectedLoc = loc;
-    document.getElementById('dailyContent').innerHTML = doRender(date);
+    _setDailyContent(doRender(date));
   };
 
   const dateBtns = MOCK_DAILY.map(d => `
@@ -2966,6 +3017,7 @@ function renderDaily(container){
     </div>
   </div>
   <div id="dailyContent">${doRender(selectedDate)}</div>`;
+  _fixMobileTableToggle();
 
   window._loadMoreDays = () => {
     visibleDays = Math.min(visibleDays + 30, allDays.length);
@@ -3001,7 +3053,7 @@ function renderDaily(container){
     const lbl = document.getElementById('dailyDateLabel');
     if(lbl && window._formatThDate) lbl.textContent = window._formatThDate(date);
     window._dpViewYear = null; window._dpViewMonth = null;
-    document.getElementById('dailyContent').innerHTML = doRender(date);
+    _setDailyContent(doRender(date));
     // อัปเดตสีปุ่ม
     MOCK_DAILY.forEach(d => {
       const btn = document.getElementById('daybtn_' + d.date);
@@ -3297,7 +3349,7 @@ function undoDelete(){
   if(day){
     day.entries.push(last.data);
     showToast('✅ คืนค่าเรียบร้อย');
-    document.getElementById('dailyContent').innerHTML = doRender(last.date);
+    _setDailyContent(doRender(last.date));
   }
 }
 
@@ -3348,7 +3400,7 @@ async function deleteDailyEntry(date, entryIdx){
   _clearStockCache();
   _clearDailyIndex();
   _saveDailyData();
-  document.getElementById('dailyContent').innerHTML = doRender(date);
+  _setDailyContent(doRender(date));
 }
 
 function editDailyEntry(date, entryIdx){
@@ -3571,7 +3623,7 @@ async function saveEditDailyEntry(date, realIdx){
   window._editEntryImgs = null;
   window._editEntryKgPerUnit = null;
   closeModal();
-  document.getElementById('dailyContent').innerHTML = doRender(date);
+  _setDailyContent(doRender(date));
 }
 
 
