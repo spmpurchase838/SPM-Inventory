@@ -1618,21 +1618,25 @@ let _saveNewInProgress = false;
 async function saveNew(){
   if(_saveNewInProgress) return;
   _saveNewInProgress = true;
-  // helper reset flag เมื่อ validation fail
-  const _resetSaveFlag = () => { _saveNewInProgress = false; };
   const saveBtn = document.querySelector('.modal-footer .btn-primary');
   if(saveBtn){ saveBtn.disabled = true; saveBtn.textContent = 'กำลังบันทึก...'; }
+  // helper reset flag + ปุ่ม เมื่อ validation fail (เรียกใน catch/validation)
+  const _resetSaveFlag = () => {
+    _saveNewInProgress = false;
+    if(saveBtn){ saveBtn.disabled=false; saveBtn.textContent='บันทึก'; }
+  };
   try {
   const d = getFormData();
   if(!d.code){
-    if(saveBtn){ saveBtn.disabled=false; saveBtn.textContent='บันทึก'; }
+    _resetSaveFlag();
     showToast('กรุณาเลือก Code','error'); return;
   }
   if(!d.no){
-    if(saveBtn){ saveBtn.disabled=false; saveBtn.textContent='บันทึก'; }
+    _resetSaveFlag();
     showToast('กรุณาเลือก No.','error'); return;
   }
-  const existing = db.find(x => x.no === d.no);
+  const paddedNewNo = String(d.no).padStart(6, '0');
+  const existing = db.find(x => x.no === paddedNewNo);
   if(existing){
     if(saveBtn){ saveBtn.disabled=false; saveBtn.textContent='บันทึก'; }
     showToast('⚠️ No. "' + d.no + '" มีอยู่แล้ว (' + existing.desc + ') กรุณาใช้ปุ่มแก้ไขแทน', 'error');
@@ -1800,8 +1804,9 @@ function showDetail(id){
   const accumulated = {}; // key: location → {location, loc, qty, unit}
   MOCK_DAILY.forEach(day => {
     day.entries.filter(e => e.no === r.no).forEach(e => {
-      const key = (e.location||'ไม่ระบุ') + '|' + e.unit;
-      if(!accumulated[key]) accumulated[key] = {location:e.location||'ไม่ระบุ', loc:e.storage||'', qty:0, unit:e.unit};
+      const normLocation = normLoc(e.location||'');
+      const key = normLocation + '|' + e.unit;
+      if(!accumulated[key]) accumulated[key] = {location:normLocation||'ไม่ระบุ', loc:e.storage||'', qty:0, unit:e.unit};
       accumulated[key].qty = r2(accumulated[key].qty + (parseFloat(e.qty)||0));
     });
   });
@@ -2062,7 +2067,7 @@ function _renderStockRows(){
 }
 
 function getStocks(){
-  return pendingStocks.filter(s => s.loc || s.qty);
+  return pendingStocks.filter(s => s.location || s.qty);
 }
 
 
@@ -2626,63 +2631,6 @@ function renderStockView(container){
   _clearStockCache(); // เคลียร์ cache ก่อน render เสมอ
   const withStock = db.filter(r => getStockByNoAndLoc(r.no).length > 0);
 
-  const renderCards = (q) => {
-    const filtered = withStock.filter(r =>
-      !q || r.desc.toLowerCase().includes(q.toLowerCase())
-          || r.no.toLowerCase().includes(q.toLowerCase())
-          || r.code.toLowerCase().includes(q.toLowerCase())
-    );
-
-    if(!filtered.length) return `
-      <div style="text-align:center;padding:60px;color:#aaa">
-        <div style="font-size:40px;margin-bottom:12px">📦</div>
-        <div style="font-size:14px">ยังไม่มีข้อมูลสต็อก</div>
-        <div style="font-size:12px;margin-top:6px">ไปที่ "✏️ อัปเดตสต็อก" เพื่อกรอกจำนวน</div>
-      </div>`;
-
-    return filtered
-      .filter(r => getStockByNoAndLoc(r.no).length > 0) // แสดงเฉพาะที่มีสต็อก
-      .map(r => {
-      const validStocks = getStockByNoAndLoc(r.no);
-      const totalByUnit = {};
-      validStocks.forEach(s => {
-        const unit = s.unit || 'หน่วย';
-        totalByUnit[unit] = r2((totalByUnit[unit]||0) + (parseFloat(s.qty)||0));
-      });
-
-      return `
-      <div style="background:white;border-radius:8px;padding:16px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,.08)">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
-          <div>
-            <span class="badge ${r.code[0]==='A'?'ba':r.code[0]==='B'?'bb':'bc'}" style="margin-right:6px">${r.code}</span>
-            <span style="font-weight:600;font-size:14px">${escHtml(r.desc)||r.no}</span>
-            <span style="color:#888;font-size:12px;margin-left:6px">${r.no}</span>
-          </div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
-            ${Object.entries(totalByUnit).map(([unit,qty])=>{
-              const kg = convertToKg(qty, unit, r.no);
-              const isKg = (unit === 'กก.' || unit === 'kg');
-              const kgStr = (kg !== null && !isKg) ? ` = ${kg.toLocaleString()} กก.` : '';
-              return `<span style="background:#1a5276;color:white;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700">
-                รวม ${qty.toLocaleString()} ${unit}${kgStr}
-              </span>`;
-            }).join('')}
-          </div>
-        </div>
-        <div style="border-top:1px solid var(--rule)">
-          ${validStocks.map(s=>`
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid #f5f5f5;font-size:12px">
-            <div style="flex:1;min-width:0">
-              <div style="color:#444">📍 ${escHtml(s.location)||'-'}</div>
-              <div style="color:#888;font-size:11px">${escHtml(s.loc)||'-'}</div>
-            </div>
-            <div style="font-weight:600;color:#2874a6;white-space:nowrap">${parseFloat(s.qty).toLocaleString()} ${escHtml(s.unit)||''}</div>
-          </div>`).join('')}
-        </div>
-      </div>`;
-    }).join('');
-  };
-
   // หา code ที่มีสต็อก
   const availCodes = [...new Set(withStock.map(r => r.code))];
   let selectedSVCode = availCodes[0] || 'all';
@@ -2707,18 +2655,7 @@ function renderStockView(container){
       </div>`).join('');
   };
 
-  container.innerHTML = `
-  <div style="margin-bottom:14px">
-    <div style="font-size:15px;font-weight:600;color:#1a5276;margin-bottom:10px">📦 สรุปสต็อกสินค้า</div>
-    <div id="svCodeBtns">${renderCodeBtns()}</div>
-    <div style="margin-top:10px;margin-bottom:10px;height:1px;background:#eee"></div>
-    <input type="text" placeholder="ค้นหาชื่อสินค้า / No...."
-      style="width:100%;padding:8px 12px;border:1px solid #d5d8dc;border-radius:6px;font-size:13px;margin-bottom:12px"
-      oninput="window._renderSV(this.value)">
-  </div>
-  <div id="svWrap">${renderCardsFiltered(selectedSVCode, '')}</div>`;
-
-  // แก้ renderCards ให้รับ code filter
+  // renderCardsFiltered: กรองตาม code และคำค้นหา
   const renderCardsFiltered = (code, q) => {
     const filtered = withStock.filter(r =>
       r.code === code &&
@@ -2776,6 +2713,17 @@ function renderStockView(container){
       ${itemCards}
     </div>`;
   };
+
+  container.innerHTML = `
+  <div style="margin-bottom:14px">
+    <div style="font-size:15px;font-weight:600;color:#1a5276;margin-bottom:10px">📦 สรุปสต็อกสินค้า</div>
+    <div id="svCodeBtns">${renderCodeBtns()}</div>
+    <div style="margin-top:10px;margin-bottom:10px;height:1px;background:#eee"></div>
+    <input type="text" placeholder="ค้นหาชื่อสินค้า / No...."
+      style="width:100%;padding:8px 12px;border:1px solid #d5d8dc;border-radius:6px;font-size:13px;margin-bottom:12px"
+      oninput="window._renderSV(this.value)">
+  </div>
+  <div id="svWrap">${renderCardsFiltered(selectedSVCode, '')}</div>`;
 
   window._selectSVCode = (code) => {
     selectedSVCode = code;
@@ -4491,7 +4439,7 @@ function csvCell(v){
 }
 
 function escHtml(str){
-  return String(str)
+  return String(str == null ? '' : str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -4905,8 +4853,9 @@ function _checkDuplicateNo(no, currentId){
     if(warn) warn.style.display = 'none';
     return;
   }
-  // หาว่ามี No. นี้ใน db แล้วหรือยัง
-  const existing = db.find(r => r.no === no && String(r.id) !== String(currentId));
+  // หาว่ามี No. นี้ใน db แล้วหรือยัง (db เก็บ no แบบ 6 หลัก ต้อง pad ก่อนเปรียบเทียบ)
+  const paddedNo = String(no).padStart(6, '0');
+  const existing = db.find(r => r.no === paddedNo && String(r.id) !== String(currentId));
   if(existing){
     msg.textContent = 'No. "' + no + '" มีอยู่แล้วในระบบ (' + existing.desc + ' — ' + existing.code + ')';
     warn.style.display = 'block';
@@ -5041,8 +4990,8 @@ loadFromSheet().then(() => {
 
 <!-- Onboarding Overlay -->
 <div id="onboardingOverlay" style="display:none;position:fixed;inset:0;z-index:5000;pointer-events:none">
-  <!-- backdrop มืด -->
-  <div id="onboardingBackdrop" style="position:absolute;inset:0;background:rgba(0,0,0,.55)"></div>
+  <!-- backdrop มืด — pointer-events:all บล็อกการคลิกผ่านลงไปข้างใต้ระหว่าง onboarding -->
+  <div id="onboardingBackdrop" style="position:absolute;inset:0;background:rgba(0,0,0,.55);pointer-events:all"></div>
   <!-- card คำอธิบาย -->
   <div id="onboardingCard" style="position:absolute;background:white;border-radius:12px;padding:18px 20px;max-width:260px;box-shadow:0 8px 32px rgba(0,0,0,.2);pointer-events:all">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
@@ -5095,10 +5044,11 @@ loadFromSheet().then(() => {
           <option value="A005">A005 — Medicine</option>
           <option value="A009">A009 — Production for trial</option>
           <option value="B101">B101 — Semi-RM</option>
-          <option value="B102">B102 — Feed Additive Mix</option>
-          <option value="B103">B103 — Premix</option>
-          <option value="C203">C203 — NC Rework</option>
-          <option value="C209">C209 — Rework</option>
+          <option value="B102">B102 — WIP Premix</option>
+          <option value="B103">B103 — WIP ขนมชั้น</option>
+          <option value="C203">C203 — NC - FG Bulk</option>
+          <option value="C204">C204 — NC - FG Bag</option>
+          <option value="C209">C209 — NC สารเสริม</option>
         </optgroup>
       </select>
     </div>
