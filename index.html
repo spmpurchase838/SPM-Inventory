@@ -2054,6 +2054,8 @@ function renderStockEdit(container){
       return;
     }
     wrap.innerHTML = result;
+    // Render initial input rows for each visible item (state is pre-populated but DOM was empty)
+    if(window._seStocks) Object.keys(window._seStocks).forEach(id => _renderSERows(Number(id)));
   };
 
   let seGroupFilter = 'all';
@@ -2127,6 +2129,8 @@ function renderStockEdit(container){
     }
     const result = renderFiltered(group, q);
     wrap.innerHTML = result || emptyState('🔍','ไม่พบสินค้าใน Group นี้');
+    // Render initial input rows for each visible item
+    if(window._seStocks) Object.keys(window._seStocks).forEach(id => _renderSERows(Number(id)));
   };
 
   window._doSEFilter = _debounce(doFilter, 200);
@@ -2388,13 +2392,18 @@ async function saveStockItem(itemId, btnEl){
     }
 
     if(mode === 'replace'){
-      // ลบ entry เดิมของสินค้านี้ออกก่อน แล้วใส่ใหม่
-      todayRecord.entries = todayRecord.entries.filter(e => e.no !== r.no);
+      // ลบเฉพาะ entry ที่ตรงกับ no + location ที่กำลัง replace เท่านั้น
+      // ไม่ลบ entry ของ location อื่นที่ไม่ได้ถูก replace
+      const replacedLocations = newEntries.map(ne => normLoc(ne.location||''));
+      todayRecord.entries = todayRecord.entries.filter(e =>
+        !(e.no === r.no && replacedLocations.includes(normLoc(e.location||'')))
+      );
     }
 
     const itemImgs = window._seImgs ? (window._seImgs[itemId]||[]) : [];
     newEntries.forEach(s => {
       todayRecord.entries.push({
+        _eid: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         no: r.no, desc: r.desc, code: r.code,
         location: s.location||'', storage: s.loc||'',
         qty: parseFloat(s.qty), unit: s.unit||'',
@@ -2702,10 +2711,12 @@ window.addEventListener('orientationchange', _applyMobileFixes);
 // คอยเช็คซ้ำอัตโนมัติทุกครั้งที่มีการเปลี่ยนแปลงเนื้อหาในหน้า (กันกรณีเรียก render จากจุดที่ลืมเรียกฟังก์ชันนี้)
 // debounce ไว้กันไม่ให้รันถี่เกินไปตอนมีการเปลี่ยนแปลง DOM รัวๆ (เช่น re-render บ่อยๆ)
 function _debounceEarly(fn, wait){
+  // Leading-edge debounce: fire immediately on first call, then block for `wait` ms
   let t;
   return function(...args){
+    if(!t) fn.apply(this, args); // fire immediately if not in cooldown
     clearTimeout(t);
-    t = setTimeout(() => fn.apply(this, args), wait);
+    t = setTimeout(() => { t = null; }, wait);
   };
 }
 const _mobileFixObserver = new MutationObserver(_debounceEarly(() => { _applyMobileFixes(); }, 150));
@@ -2852,11 +2863,14 @@ function renderDaily(container){
           <tbody>
             ${s.rows.map(r=>{
               // ใช้ index ใน day.entries จริงๆ เพื่อป้องกันแก้/ลบผิด entry
-              const ei = day.entries.findIndex(e=>
-                e.no===r.no && normLoc(e.location||'')===r.location && 
-                e.storage===r.storage && e.qty===r.qty && 
-                e.unit===r.unit && e.note===r.note
-              );
+              // ใช้ _eid ถ้ามี (entry ใหม่มี unique ID) ไม่งั้น fallback เป็น value matching
+              const ei = r._eid
+                ? day.entries.findIndex(e => e._eid === r._eid)
+                : day.entries.findIndex(e=>
+                    e.no===r.no && normLoc(e.location||'')===r.location &&
+                    e.storage===r.storage && e.qty===r.qty &&
+                    e.unit===r.unit && e.note===r.note
+                  );
               const rowKg = convertToKg(r.qty, r.unit, r.no, r.kgPerUnit);
               const rowWpu = (r.kgPerUnit && parseFloat(r.kgPerUnit) > 0) ? parseFloat(r.kgPerUnit)
                 : (r.unit === 'bigbag' ? 1000 : (r.unit === 'ตัน' ? 1000 : getWeightPerUnit(r.no)));
@@ -2931,6 +2945,10 @@ function renderDaily(container){
       ${totalSection}
       ${cards}`;
   };
+
+  // Expose doRender globally so external functions (deleteDailyEntry, saveEditDailyEntry, undoDelete)
+  // can re-render content without crashing with ReferenceError
+  window._doRender = doRender;
 
   window._selectLoc = (loc, date) => {
     window._dailySelectedLoc = loc;
@@ -3346,7 +3364,7 @@ function undoDelete(){
   if(day){
     day.entries.push(last.data);
     showToast('✅ คืนค่าเรียบร้อย');
-    _setDailyContent(doRender(last.date));
+    _setDailyContent(window._doRender(last.date));
   }
 }
 
@@ -3397,7 +3415,7 @@ async function deleteDailyEntry(date, entryIdx){
   _clearStockCache();
   _clearDailyIndex();
   _saveDailyData();
-  _setDailyContent(doRender(date));
+  _setDailyContent(window._doRender(date));
 }
 
 function editDailyEntry(date, entryIdx){
@@ -3620,7 +3638,7 @@ async function saveEditDailyEntry(date, realIdx){
   window._editEntryImgs = null;
   window._editEntryKgPerUnit = null;
   closeModal();
-  _setDailyContent(doRender(date));
+  _setDailyContent(window._doRender(date));
 }
 
 
