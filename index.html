@@ -733,9 +733,12 @@ tbody tr:hover {
 
 <script>
 // ── credentials (obfuscated) ──
-// [BugFix #4 / Security] XOR-42 ถอดรหัสได้ง่ายมากจาก page source
-// แนะนำ: ย้าย secret ไปไว้ใน Apps Script ฝั่ง server และใช้ Google Login แทน
-// หรือตั้ง Apps Script ให้ตรวจ origin/IP เพื่อลดความเสี่ยง
+// ⚠️ [Fix S-1 / Security Warning] GS_URL และ API_TOKEN นี้มองเห็นได้จาก page source
+// XOR-42 ถอดรหัสได้ใน 1 วินาทีจาก browser console — ไม่ใช่การเข้ารหัสที่ปลอดภัย
+// แนะนำแก้ไขในอนาคต:
+//   1. ย้าย token ไปไว้ใน Google Apps Script ฝั่ง server โดยตรง (ไม่ส่งกลับมาหน้าบ้าน)
+//   2. เพิ่ม doGet/doPost ใน Apps Script ให้ตรวจสอบ allowed origin หรือ IP whitelist
+//   3. ใช้ Google OAuth แทน static token
 function _d(h){return h.match(/../g).map(b=>String.fromCharCode(parseInt(b,16)^42)).join('');}
 const GS_URL = _d('425e5e5a59100505594958435a5e044d45454d464f0449454705474b495845590559056b614c534948524247501a5860605a1b58647f1d6f491f6b501d476b7f5b7913755d43197f73755f67681b5e7d5c195f7b40136b6f6712604c464360074c44627d5243667a6c1d4b054f524f49');
 const API_TOKEN = _d('797a67756c6f6f6e6763666675181a181e');
@@ -1634,6 +1637,11 @@ async function saveNew(){
     _resetSaveFlag();
     showToast('กรุณาเลือก No.','error'); return;
   }
+  // [Fix M-1] ตรวจสอบว่ากรอกชื่อสินค้า (desc) ด้วย ไม่ใช่แค่ code กับ no
+  if(!d.desc || !d.desc.trim()){
+    _resetSaveFlag();
+    showToast('กรุณากรอกชื่อสินค้า','error'); return;
+  }
   const paddedNewNo = String(d.no).padStart(6, '0');
   const existing = db.find(x => x.no === paddedNewNo);
   if(existing){
@@ -1941,7 +1949,12 @@ function showSpinner(show){
 function showToast(msg, type='success'){
   const t = document.getElementById('toast');
   if(window._toastTimer){ clearTimeout(window._toastTimer); window._toastTimer = null; }
-  t.textContent = msg; t.className = `toast ${type}`; t.style.display='block';
+  // [Fix L-4] ใช้ classList เพื่อ toggle class 'error'/'success' ชัดเจนกว่า
+  // (CSS ใช้ #toast.error ดังนั้น class ที่สำคัญคือ type ไม่ใช่ 'toast')
+  t.textContent = msg;
+  t.classList.remove('error','success');
+  if(type && type !== 'success') t.classList.add(type);
+  t.style.display='block';
   window._toastTimer = setTimeout(()=>{ t.style.display='none'; window._toastTimer=null; },3000);
 }
 
@@ -2818,17 +2831,9 @@ window.addEventListener('resize', _applyMobileFixes);
 window.addEventListener('orientationchange', _applyMobileFixes);
 
 // คอยเช็คซ้ำอัตโนมัติทุกครั้งที่มีการเปลี่ยนแปลงเนื้อหาในหน้า (กันกรณีเรียก render จากจุดที่ลืมเรียกฟังก์ชันนี้)
-// [BugFix #8] รวม _debounceEarly และ _debounce ให้ใช้ฟังก์ชันเดียวกัน ลดโค้ดซ้ำซ้อน
-// (ประกาศ _debounce ไว้ที่ส่วนท้ายไฟล์ ที่นี่ใช้ function declaration เพื่อ hoisting)
-function _debounceEarly(fn, wait){
-  let t;
-  return function(...args){
-    clearTimeout(t);
-    t = setTimeout(() => fn.apply(this, args), wait);
-  };
-}
-// หมายเหตุ: _debounce ที่ด้านล่างไฟล์มี logic เหมือนกันทุกประการ ไว้ใช้สำหรับ search inputs
-const _mobileFixObserver = new MutationObserver(_debounceEarly(() => { _applyMobileFixes(); }, 250));
+// [Fix L-1] ลบ _debounceEarly ออก — ใช้ _debounce (function declaration ท้ายไฟล์ = hoisted) แทนได้เลย
+// function declaration ถูก hoist ขึ้นมาก่อน execute ทุก statement จึงใช้ได้ก่อนประกาศในไฟล์
+const _mobileFixObserver = new MutationObserver(_debounce(() => { _applyMobileFixes(); }, 250));
 // [BugFix #3] รวมเป็น block เดียวกัน ป้องกัน observe ซ้ำสอง
 (function _initMobileObserver(){
   const attach = () => {
@@ -3896,6 +3901,7 @@ function exportDailyPDF(mode='all'){
     window._mobilePrintClose = () => {
       const m = document.getElementById('mainContent');
       if(m) m.innerHTML = window._mobilePrintPrev;
+      closeModal(); // [Fix M-2] ปิด modal ที่อาจค้างอยู่เบื้องหลังหน้าพิมพ์
       clearTimeout(window._mobilePrintTimer);
     };
     main.innerHTML += `<div style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9999">
@@ -4356,7 +4362,7 @@ function globalSearch(q){
     div.style.cssText = 'padding:10px 14px;cursor:pointer;border-bottom:1px solid #f5f5f5;display:flex;justify-content:space-between;align-items:center';
     div.innerHTML = '<div><div style="font-size:12px;font-weight:600;color:var(--ink)">' + escHtml(r.desc) + '</div>'
       + '<div style="font-size:11px;color:#aaa;margin-top:1px">' + escHtml(r.no) + '</div></div>'
-      + '<span class="badge ' + escHtml(bc) + '">' + escHtml(r.code) + '</span>';
+      + '<span class="badge ' + bc + '">' + escHtml(r.code) + '</span>'; // [Fix L-3] bc คือ 'ba'/'bb'/'bc' เสมอ ไม่จำเป็นต้อง escHtml
     div.addEventListener('mouseover', () => div.style.background = '#f5f8ff');
     div.addEventListener('mouseout', () => div.style.background = 'white');
     div.addEventListener('click', () => globalSearchGo(r.id));
@@ -4826,6 +4832,7 @@ function _exportPrintView(entries, days, dateLabel, codeLabel, locLabel){
     window._mobilePrintClose = () => {
       const m = document.getElementById('mainContent');
       if(m) m.innerHTML = window._mobilePrintPrev;
+      closeModal(); // [Fix M-2] ปิด modal ที่อาจค้างอยู่เบื้องหลังหน้าพิมพ์
       clearTimeout(window._mobilePrintTimer);
     };
     main.innerHTML += `<div style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9999">
