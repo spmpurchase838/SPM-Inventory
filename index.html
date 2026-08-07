@@ -978,9 +978,10 @@ function getFiltered(){
     }
 
     // ถ้า query ดูเหมือน code (เช่น B1, A001, B101) → เน้น code match
+    // [BugFix #4] ใส่ matchCode && เพื่อให้ sidebar filter ยังมีผลอยู่เสมอ
     const looksLikeCode = /^[a-z]\d/i.test(q);
     if(looksLikeCode){
-      return r.code.toLowerCase().startsWith(q) || r.code.toLowerCase().includes(q);
+      return matchCode && (r.code.toLowerCase().startsWith(q) || r.code.toLowerCase().includes(q));
     }
 
     // search ทั่วไป
@@ -1122,13 +1123,8 @@ function renderDashboard(){
 
 
   // นับ locations ที่มีสต็อกอยู่
+  // [BugFix #6] ลบ db.forEach ที่ว่างเปล่าออก (ไม่มีโค้ดข้างใน เปลือง CPU เปล่า)
   const allLocs = new Set();
-  db.forEach(r => {
-    const acc = getStockByNo(r.no);
-    Object.keys(acc).forEach(u => {
-      // ดึง location จาก MOCK_DAILY
-    });
-  });
   MOCK_DAILY.forEach(day => {
     day.entries.forEach(e => {
       if(e.location) allLocs.add(normLoc(e.location));
@@ -1638,7 +1634,7 @@ async function saveNew(){
   const paddedNewNo = String(d.no).padStart(6, '0');
   const existing = db.find(x => x.no === paddedNewNo);
   if(existing){
-    if(saveBtn){ saveBtn.disabled=false; saveBtn.textContent='บันทึก'; }
+    _resetSaveFlag(); // [BugFix #2] reset flag กัน ปุ่มค้างถาวร
     showToast('⚠️ No. "' + d.no + '" มีอยู่แล้ว (' + existing.desc + ') กรุณาใช้ปุ่มแก้ไขแทน', 'error');
     return;
   }
@@ -2811,7 +2807,8 @@ window.addEventListener('resize', _applyMobileFixes);
 window.addEventListener('orientationchange', _applyMobileFixes);
 
 // คอยเช็คซ้ำอัตโนมัติทุกครั้งที่มีการเปลี่ยนแปลงเนื้อหาในหน้า (กันกรณีเรียก render จากจุดที่ลืมเรียกฟังก์ชันนี้)
-// debounce ไว้กันไม่ให้รันถี่เกินไปตอนมีการเปลี่ยนแปลง DOM รัวๆ (เช่น re-render บ่อยๆ)
+// [BugFix #8] รวม _debounceEarly และ _debounce ให้ใช้ฟังก์ชันเดียวกัน ลดโค้ดซ้ำซ้อน
+// (ประกาศ _debounce ไว้ที่ส่วนท้ายไฟล์ ที่นี่ใช้ function declaration เพื่อ hoisting)
 function _debounceEarly(fn, wait){
   let t;
   return function(...args){
@@ -2819,6 +2816,7 @@ function _debounceEarly(fn, wait){
     t = setTimeout(() => fn.apply(this, args), wait);
   };
 }
+// หมายเหตุ: _debounce ที่ด้านล่างไฟล์มี logic เหมือนกันทุกประการ ไว้ใช้สำหรับ search inputs
 const _mobileFixObserver = new MutationObserver(_debounceEarly(() => { _applyMobileFixes(); }, 250));
 document.addEventListener('DOMContentLoaded', () => {
   const mainContent = document.getElementById('mainContent');
@@ -3715,6 +3713,10 @@ async function saveEditDailyEntry(date, realIdx){
 function exportDailyPDF(mode='all'){
   const day = MOCK_DAILY.find(d => d.date === window._currentDay)
     || MOCK_DAILY.slice().sort((a,b)=>b.date.localeCompare(a.date))[0];
+
+  // [BugFix #1] guard กัน crash ถ้าไม่มีข้อมูลบันทึกประจำวันเลย
+  if(!day){ showToast('⚠️ ไม่พบข้อมูลบันทึกรับสต็อก ไม่สามารถพิมพ์ได้', 'error'); return; }
+
   const printDate = new Date().toLocaleDateString('th-TH', {year:'numeric',month:'long',day:'numeric'});
 
   // จัดกลุ่มตาม code
@@ -3903,9 +3905,16 @@ function normDateStr(val){
   if(!val) return '';
   const s = String(val).trim();
   if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // [BugFix #5] new Date('YYYY-MM-DD') แปลงเป็น UTC midnight → ใน UTC+7 แสดงวันก่อนหน้าช่วง 00:00-07:00
+  // แก้โดย parse ด้วย local time แทน
+  const isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(isoMatch){
+    return isoMatch[1] + '-' + isoMatch[2] + '-' + isoMatch[3];
+  }
   const d = new Date(s);
   if(!isNaN(d.getTime())){
     const pad = n => String(n).padStart(2,'0');
+    // ใช้ local date components แทน UTC
     return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
   }
   return s;
@@ -4097,7 +4106,8 @@ window._renderDatePickerCalendar = (selectedDate) => {
     else if(isToday) style += 'background:#f0f5fb;color:#1a5276;border:1px solid #1a5276;';
     else style += 'background:none;color:#333;';
     cells += `<td style="padding:2px"><button style="${style}" onclick="window._pickDate('${ds}')">${d}</button></td>`;
-    if((firstDay + d) % 7 === 0 && d < daysInMonth) cells += '</tr><tr>';
+    // [BugFix #7] ปิด </tr> ทุกสัปดาห์รวมถึงแถวสุดท้ายด้วย
+    if((firstDay + d) % 7 === 0) cells += '</tr>' + (d < daysInMonth ? '<tr>' : '');
   }
 
   popup.innerHTML = `
@@ -4314,7 +4324,8 @@ function globalSearch(q){
   q = q.trim().toLowerCase();
   if(!q){ wrap.style.display='none'; return; }
 
-  const all = db.filter(r => r.no.toLowerCase().includes(q) || escHtml(r.desc).toLowerCase().includes(q));
+  // [BugFix #3] ใช้ r.desc ตรง ๆ ไม่ผ่าน escHtml() กัน & → &amp; ทำให้หาไม่เจอ
+  const all = db.filter(r => r.no.toLowerCase().includes(q) || r.desc.toLowerCase().includes(q));
   const matches = all.slice(0, 8);
 
   if(!matches.length){
