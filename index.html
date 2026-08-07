@@ -45,8 +45,8 @@ body {
 header {
   background: var(--navy);
   color: white;
-  padding: 0 24px;
-  height: 52px;
+  padding: env(safe-area-inset-top, 0px) 24px 0;
+  min-height: 52px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -62,7 +62,7 @@ header h1 {
 header span { font-size: 11px; opacity: .5; margin-left: auto; font-family: 'IBM Plex Mono', monospace; }
 
 /* ── Layout ── */
-.layout { display: flex; height: calc(100vh - 52px); height: calc(100dvh - 52px); }
+.layout { display: flex; height: calc(100vh - 52px); height: calc(100dvh - 52px - env(safe-area-inset-top,0px)); }
 
 /* ── Sidebar ── */
 .sidebar {
@@ -327,7 +327,9 @@ td { padding: 8px 12px; vertical-align: middle; }
 
 /* ── Toast ── */
 #toast {
-  position: fixed; bottom: 20px; right: 20px;
+  position: fixed;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  right: 20px;
   background: var(--navy);
   color: white;
   padding: 10px 18px;
@@ -488,7 +490,7 @@ tbody tr:hover {
   .table-view-mobile { display: block !important; }
 
   /* Header */
-  header { padding: 0 14px; height: 52px; gap: 8px; }
+  header { padding: env(safe-area-inset-top,0px) 14px 0; min-height: 52px; gap: 8px; }
   header h1 { font-size: 13px; }
   header > svg { display: none; }
   #globalSearchWrap { max-width: 160px !important; margin: 0 6px !important; }
@@ -521,7 +523,7 @@ tbody tr:hover {
   .sidebar-overlay.open { display: block; }
 
   /* Main content */
-  .main { padding: 14px 12px; }
+  .main { padding: 14px 12px; padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
 
   /* Topbar */
   .topbar { flex-wrap: wrap; gap: 6px; }
@@ -542,9 +544,14 @@ tbody tr:hover {
   .modal { padding: 16px; margin: 0; border-radius: 8px; }
   .modal h2 { font-size: 14px; }
   .stock-row { grid-template-columns: 1fr 1fr; gap: 5px; }
+  /* Location select spans both columns so it gets full width on mobile */
+  .stock-row > select:first-child { grid-column: 1 / -1; }
   .stock-row.stock-row-note { grid-template-columns: 1fr 1fr; gap: 5px; }
+  .stock-row.stock-row-note > select:first-child { grid-column: 1 / -1; }
   .se-row-header { display: none !important; }
   .stock-row input, .stock-row select { font-size: 16px; padding: 8px 9px; }
+  /* Ensure remove button is a comfortable touch target */
+  .stock-row .btn-remove { min-height: 40px; font-size: 18px; }
 
   /* Cards */
   .card { padding: 14px; }
@@ -601,6 +608,22 @@ tbody tr:hover {
   z-index: 9999;
   display: flex; align-items: center; justify-content: center;
   padding: 20px;
+}
+
+/* ── Loading bar (top-of-page shimmer shown by showLoading()) ── */
+.loading-bar {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  z-index: 10000;
+  background: linear-gradient(90deg, var(--blue,#2e86c1) 0%, #00c6fb 50%, var(--blue,#2e86c1) 100%);
+  background-size: 200% 100%;
+  animation: _lbShimmer 1.1s linear infinite;
+}
+@keyframes _lbShimmer {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
 }
 
 </style>
@@ -1913,8 +1936,9 @@ function showSpinner(show){
 
 function showToast(msg, type='success'){
   const t = document.getElementById('toast');
+  if(window._toastTimer){ clearTimeout(window._toastTimer); window._toastTimer = null; }
   t.textContent = msg; t.className = `toast ${type}`; t.style.display='block';
-  setTimeout(()=>t.style.display='none',3000);
+  window._toastTimer = setTimeout(()=>{ t.style.display='none'; window._toastTimer=null; },3000);
 }
 
 // เมนูที่เป็น <a> ไม่มี href กด Enter/Space ไม่ได้ ต้องผูกให้เอง
@@ -2013,7 +2037,7 @@ function addStockRow(){
     <select onchange="updateStock(${i},'location',this.value)">${_locationOptionsHtml('')}</select>
     <input placeholder="สถานที่จัดเก็บ" oninput="updateStock(${i},'loc',this.value)">
     <input placeholder="จำนวน" type="number" min="0" oninput="updateStock(${i},'qty',this.value)">
-    <input placeholder="หน่วย" oninput="updateStock(${i},'unit',this.value)">
+    <select onchange="updateStock(${i},'unit',this.value)">${_unitOptionsHtml('')}</select>
     <button class="btn-remove" onclick="removeStock(${i})" type="button">×</button>`;
   container.appendChild(div);
 }
@@ -2032,7 +2056,7 @@ function _renderStockRows(){
       <select onchange="updateStock(${idx},'location',this.value)">${_locationOptionsHtml(s.location||'')}</select>
       <input placeholder="สถานที่จัดเก็บ" value="${escHtml(s.loc||'')}" oninput="updateStock(${idx},'loc',this.value)">
       <input placeholder="จำนวน" type="number" min="0" value="${s.qty||''}" oninput="updateStock(${idx},'qty',this.value)">
-      <input placeholder="หน่วย" value="${escHtml(s.unit||'')}" oninput="updateStock(${idx},'unit',this.value)">
+      <select onchange="updateStock(${idx},'unit',this.value)">${_unitOptionsHtml(s.unit||'')}</select>
       <button class="btn-remove" onclick="removeStock(${idx})" type="button">×</button>
     </div>`).join('');
 }
@@ -2223,8 +2247,6 @@ function renderStockEdit(container){
     <div style="font-size:11px;color:#aaa;margin-bottom:12px">มีทั้งหมด ${db.length} รายการ — พิมพ์อย่างน้อย 1 ตัวอักษรเพื่อค้นหา</div>
   </div>
   <div id="seWrap">${emptyState('🔍','พิมพ์ค้นหาสินค้าด้านบน','หรือกดเลือก Group เพื่อดูรายการ')}</div>`;
-
-;
 
   window._setSEGroup = (group) => {
     seGroupFilter = group;
@@ -4759,10 +4781,7 @@ function _exportCSV(entries, dateLabel, codeLabel, locLabel){
 }
 
 function _exportPrintView(entries, days, dateLabel, codeLabel, locLabel){
-  if(_isMobileDevice()){
-    showToast('📱 กรุณาใช้ Share → Print จากเบราว์เซอร์');
-    return;
-  }
+  // หมายเหตุ: บน mobile ฟังก์ชันนี้จะแสดง print view พร้อมปุ่ม "ปิด" แทน window.print()
   const main = document.getElementById('mainContent');
   const prev = main.innerHTML;
   const printDate = new Date().toLocaleDateString('th-TH',{year:'numeric',month:'long',day:'numeric'});
