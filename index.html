@@ -733,10 +733,13 @@ tbody tr:hover {
 
 <script>
 // ── credentials (obfuscated) ──
+// [BugFix #4 / Security] XOR-42 ถอดรหัสได้ง่ายมากจาก page source
+// แนะนำ: ย้าย secret ไปไว้ใน Apps Script ฝั่ง server และใช้ Google Login แทน
+// หรือตั้ง Apps Script ให้ตรวจ origin/IP เพื่อลดความเสี่ยง
 function _d(h){return h.match(/../g).map(b=>String.fromCharCode(parseInt(b,16)^42)).join('');}
 const GS_URL = _d('425e5e5a59100505594958435a5e044d45454d464f0449454705474b495845590559056b614c534948524247501a5860605a1b58647f1d6f491f6b501d476b7f5b7913755d43197f73755f67681b5e7d5c195f7b40136b6f6712604c464360074c44627d5243667a6c1d4b054f524f49');
 const API_TOKEN = _d('797a67756c6f6f6e6763666675181a181e');
-const IMGBB_KEY = '';
+const IMGBB_KEY = ''; // [BugFix #10] ไม่ได้ใช้งาน — รูปภาพถูกเก็บเป็น base64 ใน Google Sheets โดยตรง
 
 const CODE_MAP = {"A001":"Raw Materials","A002":"Liquid & Oil","A003":"Vitamin & Mineral","A004":"Feed additive","A005":"Medicine","A009":"Production for trial","A020":"Raw Materials for sale - bulk","A021":"Raw Materials for sale - Bag","B101":"Semi - RM","B102":"Wip Premix","B103":"WIP ขนมชั้น","C203":"NC - FG Bulk","C204":"NC - FG bag","C209":"NC สารเสริม"};
 
@@ -1643,7 +1646,7 @@ async function saveNew(){
     id: Date.now(),
     row: db.length + 2,
     code:    d.code,
-    no:      d.no,
+    no:      String(d.no).padStart(6, '0'), // [BugFix #1] zero-pad ให้ตรงกับรูปแบบที่ loadFromSheet ใช้
     desc:    d.desc,
     pkg:     d.pkg    || '',
     col2:    d.col2   || '',
@@ -2590,23 +2593,20 @@ async function saveStockItem(itemId, btnEl){
     _clearStockCache(); _clearDailyIndex();
     _saveDailyData();
 
+    // [BugFix #7] แสดงข้อความ toast ให้ตรงกับ mode จริง (บวกเพิ่ม vs แทนที่ยอด)
+    const _toastLabel = (mode === 'replace') ? 'แทนที่ยอด' : 'บวกเพิ่ม';
     if(syncOk){
-      showToast('✅ บวกเพิ่ม ' + (r.desc||r.no) + ' เรียบร้อย (sync Sheet แล้ว)');
+      showToast('✅ ' + _toastLabel + ' ' + (r.desc||r.no) + ' เรียบร้อย (sync Sheet แล้ว)');
     } else {
       showToast('⚠️ เก็บไว้ในเครื่องแล้ว แต่ยังไม่ขึ้น Sheet: ' + syncErrMsg + ' — ระบบจะลองส่งใหม่ให้เอง อย่าเพิ่งล้างข้อมูลเบราว์เซอร์', 'error');
     }
 
-    // re-render รายการ (ตอนนี้ค่อยสร้างปุ่มใหม่ทับของเดิม เพราะ sync เสร็จแล้วจริง)
-    if(window._doSEFilter){
-      const q = document.getElementById('seSearchInput')?.value || '';
-      window._doSEFilter(q);
-    }
-
+    // [BugFix #6] รวมเป็น call เดียวใน setTimeout — กัน double-render / กระพริบ
     // re-render และ scroll ขึ้นบน
     const mc = document.getElementById('mainContent');
     setTimeout(() => {
       if(window._doSEFilter){
-        const inp = document.querySelector('#mainContent input[type="text"]');
+        const inp = document.getElementById('seSearchInput') || document.querySelector('#mainContent input[type="text"]');
         window._doSEFilter(inp ? inp.value : '');
       }
       // อัปเดต stock column ในตารางรายการวัตถุดิบด้วย
@@ -2626,6 +2626,17 @@ async function saveStockItem(itemId, btnEl){
 function renderStockView(container){
   _clearStockCache(); // เคลียร์ cache ก่อน render เสมอ
   const withStock = db.filter(r => getStockByNoAndLoc(r.no).length > 0);
+
+  // [BugFix #8] แสดง empty state ที่ชัดเจนเมื่อไม่มีสต็อกเลย
+  if(withStock.length === 0){
+    container.innerHTML = `
+      <div style="text-align:center;padding:60px 20px">
+        <div style="font-size:48px;margin-bottom:12px">📦</div>
+        <div style="font-size:16px;font-weight:700;color:#555;margin-bottom:8px">ยังไม่มีข้อมูลสต็อก</div>
+        <div style="font-size:13px;color:#aaa">กรุณาไปที่หน้า <strong>อัปเดตสต็อก</strong> แล้วบันทึกรับสต็อกก่อน</div>
+      </div>`;
+    return;
+  }
 
   // หา code ที่มีสต็อก
   const availCodes = [...new Set(withStock.map(r => r.code))];
@@ -2818,17 +2829,19 @@ function _debounceEarly(fn, wait){
 }
 // หมายเหตุ: _debounce ที่ด้านล่างไฟล์มี logic เหมือนกันทุกประการ ไว้ใช้สำหรับ search inputs
 const _mobileFixObserver = new MutationObserver(_debounceEarly(() => { _applyMobileFixes(); }, 250));
-document.addEventListener('DOMContentLoaded', () => {
-  const mainContent = document.getElementById('mainContent');
-  if(mainContent) _mobileFixObserver.observe(mainContent, { childList: true, subtree: true });
-  _applyMobileFixes();
-});
-// เผื่อ DOMContentLoaded ยิงไปแล้วก่อนสคริปต์นี้โหลด (เช่น สคริปต์อยู่ท้ายหน้า)
-if(document.readyState !== 'loading'){
-  const mainContent = document.getElementById('mainContent');
-  if(mainContent) _mobileFixObserver.observe(mainContent, { childList: true, subtree: true });
-  _applyMobileFixes();
-}
+// [BugFix #3] รวมเป็น block เดียวกัน ป้องกัน observe ซ้ำสอง
+(function _initMobileObserver(){
+  const attach = () => {
+    const mainContent = document.getElementById('mainContent');
+    if(mainContent) _mobileFixObserver.observe(mainContent, { childList: true, subtree: true });
+    _applyMobileFixes();
+  };
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', attach);
+  } else {
+    attach();
+  }
+})();
 
 // วาดหน้าประวัติใหม่อย่างปลอดภัย (ถ้ายังไม่เคยเปิดหน้านี้ ให้ render ทั้งหน้าแทน)
 function _redrawDaily(date){
@@ -4075,7 +4088,9 @@ window._renderDatePickerCalendar = (selectedDate) => {
 
   // หาเดือน/ปีที่จะแสดง
   if(!window._dpViewYear || !window._dpViewMonth){
-    const d = selectedDate ? new Date(selectedDate) : new Date();
+    // [BugFix #5] ใช้ replace(/-/g,'/') เพื่อให้ parse เป็น local time ไม่ใช่ UTC
+    // (new Date('YYYY-MM-DD') parse เป็น UTC midnight → ช่วงเที่ยงคืน–07:00 น. ใน +7 จะแสดงผิดวัน)
+    const d = selectedDate ? new Date(selectedDate.replace(/-/g, '/')) : new Date();
     window._dpViewYear = d.getFullYear();
     window._dpViewMonth = d.getMonth(); // 0-based
   }
@@ -4798,7 +4813,8 @@ function _exportPrintView(entries, days, dateLabel, codeLabel, locLabel){
     )}
     ${sections}
     <div style="margin-top:16px;padding:10px 14px;background:#f0f5fb;border-radius:6px;display:flex;justify-content:space-between;align-items:center">
-      <span style="font-size:12px;font-weight:600;color:#1a2535">รวมทั้งหมด ${entries.length} รายการ</span>
+      <!-- [BugFix #9] นำจำนวนรายการออกจาก summary bar — มีอยู่ใน _printFooter แล้ว -->
+      <span style="font-size:12px;font-weight:600;color:#1a2535">น้ำหนักรวม</span>
       <span style="font-size:13px;font-weight:800;color:#1a5276">${grandKg > 0 ? grandKg.toLocaleString()+' กก.' : '-'}</span>
     </div>
     ${_printFooter(entries.length, printDate, currentUser)}
@@ -4953,12 +4969,34 @@ function _qaClear(){
 
 // ===== Clear Daily Data =====
 async function _clearAllDailyData(){
-  if(!await customConfirm('ลบข้อมูลบันทึกรับสต็อกทั้งหมด?\nไม่สามารถกู้คืนได้')) return;
+  // [BugFix #2] เพิ่ม 2 ขั้นตอน: แจ้งเตือน + sync ลบที่ Sheet ด้วย
+  if(!await customConfirm(
+    'ลบข้อมูลบันทึกรับสต็อกทั้งหมด?\n\n' +
+    '⚠️ ระบบจะล้างข้อมูลทั้งในเครื่อง AND ส่งคำสั่งลบไปที่ Google Sheet\n' +
+    'ไม่สามารถกู้คืนได้'
+  )) return;
+
+  // 1) ลบที่ Google Sheet ก่อน (ถ้า sync ไม่ได้ ยังล้างในเครื่องได้)
+  let syncMsg = '';
+  try {
+    const res = await fetchTO(GS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ action: 'clearAllDaily', token: API_TOKEN }),
+      redirect: 'follow',
+    });
+    const json = await res.json();
+    if(!json.ok) syncMsg = ' (Sheet: ' + (json.error||'ไม่สำเร็จ') + ')';
+  } catch(e) {
+    syncMsg = ' (Sheet offline — กรุณาลบ rows ใน Google Sheet ด้วยตนเอง)';
+  }
+
+  // 2) ล้างในเครื่อง
   MOCK_DAILY.length = 0;
   localStorage.removeItem('spm_daily_data');
   _clearStockCache();
   _clearDailyIndex();
-  showToast('✅ ล้างข้อมูลเรียบร้อย');
+  showToast(syncMsg ? '⚠️ ล้างในเครื่องแล้ว' + syncMsg : '✅ ล้างข้อมูลเรียบร้อย (Sheet + เครื่อง)');
   showPage('daily');
 }
 
