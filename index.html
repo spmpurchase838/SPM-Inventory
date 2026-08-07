@@ -3438,15 +3438,39 @@ function showUndoToast(type, data, date){
   window._toastTimer = setTimeout(()=>{ toast.style.display='none'; }, 5000);
 }
 
-function undoDelete(){
+async function undoDelete(){
   const last = _undoStack.pop();
   if(!last) return;
   const day = MOCK_DAILY.find(d=>d.date===last.date);
-  if(day){
-    day.entries.push(last.data);
-    showToast('✅ คืนค่าเรียบร้อย');
-    _redrawDaily(last.date);
+  if(!day) return;
+
+  day.entries.push(last.data);
+  _clearStockCache();
+  _clearDailyIndex();
+  _saveDailyData();
+
+  // sync กลับ Google Sheet
+  try {
+    const payload = {
+      action: 'saveDaily', token: API_TOKEN,
+      date: day.date, date_th: day.date_th,
+      recorded_by: day.recorded_by, entries: day.entries,
+    };
+    const res = await fetchTO(GS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload),
+      redirect: 'follow',
+    });
+    const json = await res.json();
+    if(!json.ok) throw new Error(json.error || 'sync ไม่สำเร็จ');
+    showToast('✅ คืนค่าเรียบร้อย (Sheet อัปเดตแล้ว)');
+  } catch(e) {
+    _markPending(day.date);
+    showToast('⚠️ คืนค่าในเครื่องแล้ว แต่ยังไม่ขึ้น Sheet: ' + e.message, 'error');
   }
+
+  _redrawDaily(last.date);
 }
 
 
@@ -3670,6 +3694,14 @@ async function saveEditDailyEntry(date, realIdx){
   if(loaderMsg) loaderMsg.textContent = '⏳ กำลังบันทึกการแก้ไข...';
   if(loader) loader.style.display = 'flex';
 
+  const editQty = parseFloat(document.getElementById('edit_qty').value);
+  if(isNaN(editQty) || editQty <= 0){
+    showToast('กรุณากรอกจำนวนที่มากกว่า 0', 'error');
+    if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'บันทึก'; }
+    if(loader) loader.style.display = 'none';
+    return;
+  }
+
   const editUnit = document.getElementById('edit_unit').value.trim();
   if(editUnit === 'กระสอบ' && (!window._editEntryKgPerUnit || parseFloat(window._editEntryKgPerUnit) <= 0)){
     showToast('กรุณากรอกน้ำหนักต่อกระสอบ (กก./กระสอบ)', 'error');
@@ -3685,7 +3717,7 @@ async function saveEditDailyEntry(date, realIdx){
     ...day.entries[realIdx],
     location: document.getElementById('edit_loc').value.trim(),
     storage:  document.getElementById('edit_storage').value.trim(),
-    qty:      parseFloat(document.getElementById('edit_qty').value)||0,
+    qty:      editQty,
     unit:     editUnit,
     kgPerUnit: (editUnit === 'กระสอบ' || editUnit === 'bigbag') ? (window._editEntryKgPerUnit||'') : '',
     note:     document.getElementById('edit_note').value.trim(),
@@ -4141,7 +4173,7 @@ window._renderDatePickerCalendar = (selectedDate) => {
     </div>
     <table style="border:none;background:none;border-radius:0;width:100%"><thead>
       <tr>${'อา จ อ พ พฤ ศ ส'.split(' ').map(d=>'<th style="text-align:center;font-size:11px;color:#aaa;padding:3px;font-weight:500">'+d+'</th>').join('')}</tr>
-    </thead><tbody><tr>${cells}</tr></tbody></table>
+    </thead><tbody>${cells}</tbody></table>
     <div style="margin-top:8px;display:flex;gap:8px;font-size:11px;color:#888">
       <span><span style="display:inline-block;width:10px;height:10px;background:#dbeafe;border-radius:50%;margin-right:3px"></span>มีข้อมูล</span>
     </div>`;
