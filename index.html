@@ -2,7 +2,7 @@
 <html lang="th">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://script.google.com https://script.googleusercontent.com https://api.imgbb.com https://fonts.googleapis.com https://fonts.gstatic.com;">
 <meta http-equiv="X-Content-Type-Options" content="nosniff">
 <meta http-equiv="X-Frame-Options" content="DENY">
@@ -573,6 +573,17 @@ tbody tr:hover {
 }
 
 [hidden] { display: none !important; }
+/* ── ตัวดูรูปเต็มจอ ── */
+#imgViewer{
+  display:none; position:fixed; inset:0; z-index:1500;
+  background:rgba(0,0,0,.92); align-items:center; justify-content:center; padding:16px;
+}
+#imgViewer.open{ display:flex; }
+#imgViewer img{ max-width:100%; max-height:88vh; object-fit:contain; border-radius:8px; }
+#imgViewer button{
+  position:absolute; top:14px; right:14px; width:44px; height:44px; border-radius:50%;
+  background:rgba(255,255,255,.16); color:#fff; border:none; font-size:20px; cursor:pointer;
+}
 #menuToggle {
   display: none;
   background: none; border: none;
@@ -615,52 +626,53 @@ tbody tr:hover {
     <div id="globalSearchResults" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;background:white;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.15);z-index:200;max-height:360px;overflow-y:auto;border:1px solid var(--rule)"></div>
   </div>
 
+  <span id="pendingBadge" onclick="retryPending()" style="display:none;flex-shrink:0;font-size:11px;background:#8a3a1a;color:#fff;padding:2px 8px;border-radius:10px;cursor:pointer;margin-right:6px">⚠️ รอส่ง</span>
   <span id="hdrCount" style="flex-shrink:0;font-size:11px">กำลังโหลด...</span>
   <span id="userDisplay" style="display:none;font-size:11px;opacity:.7;font-family:'IBM Plex Mono',monospace;flex-shrink:0"></span>
 </header>
 <div class="layout">
   <nav class="sidebar">
     <div class="sidebar-top">
-      <a onclick="showPage('dashboard')">
+      <a role="button" tabindex="0" onclick="showPage('dashboard')">
         <span>📊 Dashboard</span>
       </a>
-      <a onclick="showPage('stockview')">
+      <a role="button" tabindex="0" onclick="showPage('stockview')">
         <span>📦 สรุปสต็อกสินค้า</span>
       </a>
-      <a onclick="showPage('stockedit')">
+      <a role="button" tabindex="0" onclick="showPage('stockedit')">
         <span>✏️ อัปเดตสต็อก</span>
       </a>
-      <a onclick="showPage('daily')">
+      <a role="button" tabindex="0" onclick="showPage('daily')">
         <span>📋 บันทึกรับสต็อก</span>
       </a>
-      <a class="active" onclick="showPage('list');filterBy('all')">
+      <a class="active" role="button" tabindex="0" onclick="showPage('list');filterBy('all')">
         <span>รายการวัตถุดิบ</span>
         <span class="cnt" id="cnt-all">0</span>
       </a>
-      <a onclick="showPage('list');showAddModal()" style="background:#2874a6;color:white;margin:6px 10px;border-radius:6px;justify-content:center">
+      <a role="button" tabindex="0" onclick="showPage('list');showAddModal()" style="background:#2874a6;color:white;margin:6px 10px;border-radius:6px;justify-content:center">
         <span>+ เพิ่มรายการ</span>
       </a>
     </div>
-    <div class="acc-header open" onclick="toggleAcc(this)"><span>A — วัตถุดิบหลัก</span><span class="arr">▶</span></div>
+    <div class="acc-header open" role="button" tabindex="0" onclick="toggleAcc(this)"><span>A — วัตถุดิบหลัก</span><span class="arr">▶</span></div>
     <div class="acc-body open">
-      <a onclick="showPage('list');filterBy('A001')"><span>A001 Raw Materials</span><span class="cnt" id="cnt-A001">0</span></a>
-      <a onclick="showPage('list');filterBy('A002')"><span>A002 Liquid &amp; Oil</span><span class="cnt" id="cnt-A002">0</span></a>
-      <a onclick="showPage('list');filterBy('A003')"><span>A003 Vitamin &amp; Mineral</span><span class="cnt" id="cnt-A003">0</span></a>
-      <a onclick="showPage('list');filterBy('A004')"><span>A004 Feed Additive</span><span class="cnt" id="cnt-A004">0</span></a>
-      <a onclick="showPage('list');filterBy('A005')"><span>A005 Medicine</span><span class="cnt" id="cnt-A005">0</span></a>
-      <a onclick="showPage('list');filterBy('A009')"><span>A009 Production for trial</span><span class="cnt" id="cnt-A009">0</span></a>
+      <a role="button" tabindex="0" onclick="showPage('list');filterBy('A001')"><span>A001 Raw Materials</span><span class="cnt" id="cnt-A001">0</span></a>
+      <a role="button" tabindex="0" onclick="showPage('list');filterBy('A002')"><span>A002 Liquid &amp; Oil</span><span class="cnt" id="cnt-A002">0</span></a>
+      <a role="button" tabindex="0" onclick="showPage('list');filterBy('A003')"><span>A003 Vitamin &amp; Mineral</span><span class="cnt" id="cnt-A003">0</span></a>
+      <a role="button" tabindex="0" onclick="showPage('list');filterBy('A004')"><span>A004 Feed Additive</span><span class="cnt" id="cnt-A004">0</span></a>
+      <a role="button" tabindex="0" onclick="showPage('list');filterBy('A005')"><span>A005 Medicine</span><span class="cnt" id="cnt-A005">0</span></a>
+      <a role="button" tabindex="0" onclick="showPage('list');filterBy('A009')"><span>A009 Production for trial</span><span class="cnt" id="cnt-A009">0</span></a>
     </div>
-    <div class="acc-header" onclick="toggleAcc(this)"><span>B — Semi / WIP</span><span class="arr">▶</span></div>
+    <div class="acc-header" role="button" tabindex="0" onclick="toggleAcc(this)"><span>B — Semi / WIP</span><span class="arr">▶</span></div>
     <div class="acc-body">
-      <a onclick="showPage('list');filterBy('B101')"><span>B101 Semi - RM</span><span class="cnt" id="cnt-B101">0</span></a>
-      <a onclick="showPage('list');filterBy('B102')"><span>B102 WIP Premix</span><span class="cnt" id="cnt-B102">0</span></a>
-      <a onclick="showPage('list');filterBy('B103')"><span>B103 WIP ขนมชั้น</span><span class="cnt" id="cnt-B103">0</span></a>
+      <a role="button" tabindex="0" onclick="showPage('list');filterBy('B101')"><span>B101 Semi - RM</span><span class="cnt" id="cnt-B101">0</span></a>
+      <a role="button" tabindex="0" onclick="showPage('list');filterBy('B102')"><span>B102 WIP Premix</span><span class="cnt" id="cnt-B102">0</span></a>
+      <a role="button" tabindex="0" onclick="showPage('list');filterBy('B103')"><span>B103 WIP ขนมชั้น</span><span class="cnt" id="cnt-B103">0</span></a>
     </div>
-    <div class="acc-header" onclick="toggleAcc(this)"><span>C — NC / Rework</span><span class="arr">▶</span></div>
+    <div class="acc-header" role="button" tabindex="0" onclick="toggleAcc(this)"><span>C — NC / Rework</span><span class="arr">▶</span></div>
     <div class="acc-body">
-      <a onclick="showPage('list');filterBy('C203')"><span>C203 NC - FG Bulk</span><span class="cnt" id="cnt-C203">0</span></a>
-      <a onclick="showPage('list');filterBy('C204')"><span>C204 NC - FG Bag</span><span class="cnt" id="cnt-C204">0</span></a>
-      <a onclick="showPage('list');filterBy('C209')"><span>C209 NC สารเสริม</span><span class="cnt" id="cnt-C209">0</span></a>
+      <a role="button" tabindex="0" onclick="showPage('list');filterBy('C203')"><span>C203 NC - FG Bulk</span><span class="cnt" id="cnt-C203">0</span></a>
+      <a role="button" tabindex="0" onclick="showPage('list');filterBy('C204')"><span>C204 NC - FG Bag</span><span class="cnt" id="cnt-C204">0</span></a>
+      <a role="button" tabindex="0" onclick="showPage('list');filterBy('C209')"><span>C209 NC สารเสริม</span><span class="cnt" id="cnt-C209">0</span></a>
     </div>
   </nav>
   <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
@@ -670,6 +682,7 @@ tbody tr:hover {
   </div>
 </div>
 <div class="modal-bg" id="modalBg"><div class="modal" id="modalBox"></div></div>
+<div id="imgViewer" onclick="closeImgViewer()"><button type="button" aria-label="ปิด" onclick="closeImgViewer()">&#10005;</button><img id="imgViewerPic" alt=""></div>
 <div class="toast" id="toast"></div>
 <!-- Login Overlay -->
 <div id="loginOverlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:#0d1f35;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px">
@@ -692,16 +705,6 @@ tbody tr:hover {
       </button>
     </div>
   </div>
-</div>
-
-<!-- Session Warning Banner -->
-<div id="sessionWarnBanner" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9998;background:#8a3a1a;color:white;padding:14px 20px;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.3);align-items:center;gap:14px;font-size:13px;min-width:300px;max-width:90vw">
-  <span style="font-size:20px">⏱️</span>
-  <div style="flex:1">
-    <div style="font-weight:600;margin-bottom:2px">ระบบจะออกจากการใช้งานในอีก <span id="sessionCountdown">60</span> วินาที</div>
-    <div style="font-size:11px;opacity:.7">เนื่องจากไม่มีการใช้งานเป็นเวลานาน</div>
-  </div>
-  <button onclick="_resetSession()" style="background:white;color:#8a3a1a;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">ใช้งานต่อ</button>
 </div>
 
 <script>
@@ -752,7 +755,86 @@ let currentSortCol = 'no';   // default เรียงตาม No.
 let currentSortDir = 'asc';  // asc | desc
 const PAGE_SIZE = 20;
 
-function showLoading(on){ document.getElementById('loadingBar').style.display = on?'block':'none'; }
+function showLoading(on){ const el = document.getElementById('loadingBar'); if(el) el.style.display = on?'block':'none'; }
+
+// วันที่ตามเวลาเครื่อง (เดิมใช้ toISOString ซึ่งเป็นเวลา UTC ทำให้บันทึกช่วง 00:00-07:00 น. ไปลงเป็นเมื่อวาน)
+/* ── คิว "วันที่ยังส่งขึ้น Sheet ไม่สำเร็จ" ──────────────────────────────
+   เดิม: บันทึกลง localStorage แล้ว loadFromSheet เขียนทับด้วยข้อมูลจากชีต
+        ของที่ยังไม่ขึ้นชีตจึงหายเงียบตอนเปิดใหม่
+   ตอนนี้: จำวันที่ค้างไว้ ตอนโหลดจะไม่ทับวันเหล่านั้น และพยายามส่งซ้ำให้เอง  */
+function _getPending(){
+  try { const v = JSON.parse(localStorage.getItem('spm_pending_dates')||'[]'); return Array.isArray(v)?v:[]; }
+  catch(e){ return []; }
+}
+function _setPending(arr){
+  try { localStorage.setItem('spm_pending_dates', JSON.stringify([...new Set(arr)])); } catch(e){}
+  _paintPending();
+}
+function _markPending(date){ if(date) _setPending(_getPending().concat([date])); }
+function _clearPending(date){ _setPending(_getPending().filter(d => d !== date)); }
+
+function _paintPending(){
+  const el = document.getElementById('pendingBadge');
+  if(!el) return;
+  const p = _getPending();
+  if(!p.length){ el.style.display = 'none'; return; }
+  el.style.display = 'inline-block';
+  el.textContent = '⚠️ รอส่ง ' + p.length + ' วัน';
+  el.title = 'ยังส่งขึ้น Google Sheet ไม่สำเร็จ: ' + p.join(', ') + ' (กดเพื่อลองส่งอีกครั้ง)';
+}
+
+// ส่งข้อมูลของวันที่ค้างอยู่ขึ้นชีตอีกครั้ง
+async function retryPending(silent){
+  const p = _getPending();
+  if(!p.length){ if(!silent) showToast('ไม่มีข้อมูลค้างส่ง'); return; }
+  if(!navigator.onLine){ if(!silent) showToast('ยังไม่มีอินเทอร์เน็ต', 'error'); return; }
+  let ok = 0, fail = 0;
+  for(const date of p){
+    const day = MOCK_DAILY.find(d => d.date === date);
+    try {
+      if(day && day.entries && day.entries.length){
+        const res = await fetchTO(GS_URL, {
+          method:'POST', headers:{'Content-Type':'text/plain'}, redirect:'follow',
+          body: JSON.stringify({ action:'saveDaily', token:API_TOKEN, date:day.date,
+                                 date_th:day.date_th, recorded_by:day.recorded_by, entries:day.entries })
+        });
+        const j = await res.json();
+        if(!j.ok) throw new Error(j.error||'ส่งไม่สำเร็จ');
+      } else {
+        const res = await fetchTO(GS_URL, {
+          method:'POST', headers:{'Content-Type':'text/plain'}, redirect:'follow',
+          body: JSON.stringify({ action:'deleteDailyDate', token:API_TOKEN, date:date })
+        });
+        const j = await res.json();
+        if(!j.ok) throw new Error(j.error||'ลบไม่สำเร็จ');
+      }
+      _clearPending(date); ok++;
+    } catch(e){ fail++; }
+  }
+  if(!silent || ok) showToast(fail ? ('ส่งสำเร็จ ' + ok + ' วัน, ยังค้าง ' + fail + ' วัน') : ('✅ ส่งข้อมูลค้างขึ้น Sheet ครบแล้ว (' + ok + ' วัน)'), fail?'error':'success');
+}
+
+window.addEventListener('online', () => { setTimeout(()=>retryPending(true), 1200); });
+setInterval(() => { if(navigator.onLine && _getPending().length) retryPending(true); }, 90000);
+
+// fetch ที่มี timeout เสมอ (iOS เก่าไม่รองรับ AbortSignal.timeout จึงใช้ AbortController)
+const REQ_TIMEOUT = 25000;
+async function fetchTO(url, opts, ms){
+  const ctrl = new AbortController();
+  const t = setTimeout(()=>ctrl.abort(), ms || REQ_TIMEOUT);
+  try{
+    return await fetch(url, Object.assign({}, opts||{}, {signal: ctrl.signal}));
+  }catch(e){
+    if(e && e.name === 'AbortError') throw new Error('หมดเวลาเชื่อมต่อ กรุณาลองใหม่');
+    throw e;
+  }finally{ clearTimeout(t); }
+}
+
+function localDateStr(d){
+  d = d || new Date();
+  const p = n => String(n).padStart(2,'0');
+  return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate());
+}
 
 function getBadge(code){
   const g = code ? code[0] : '';
@@ -761,7 +843,7 @@ function getBadge(code){
 }
 
 // ===== ข้อมูลวัตถุดิบ (นำเข้าจากไฟล์ Excel) =====
-const ITEMS_DATA = [];;;;;;
+// (ตัด ITEMS_DATA ที่ว่างเปล่าและไม่ถูกใช้แล้วออก — ตอนนี้อ่านรายการจาก db โดยตรง)
 
 async function loadFromSheet(){
   showLoading(true);
@@ -771,7 +853,7 @@ async function loadFromSheet(){
   if(loader){ loader.style.display = 'flex'; }
   if(loaderMsg){ loaderMsg.textContent = 'กำลังโหลดข้อมูลจาก Google Sheet...'; }
   try {
-    const res = await fetch(GS_URL + '?action=getItems&token=' + API_TOKEN);
+    const res = await fetchTO(GS_URL + '?action=getItems&token=' + API_TOKEN);
     const json = await res.json();
     if(!json.ok) throw new Error(json.error || 'โหลดข้อมูลไม่สำเร็จ');
 
@@ -793,13 +875,22 @@ async function loadFromSheet(){
     }));
 
     // โหลด Daily ด้วย
-    const resD = await fetch(GS_URL + '?action=getDaily&token=' + API_TOKEN);
+    const resD = await fetchTO(GS_URL + '?action=getDaily&token=' + API_TOKEN);
     const jsonD = await resD.json();
     if(jsonD.ok){
+      // เก็บวันที่ยังส่งขึ้นชีตไม่สำเร็จไว้ก่อน ไม่ให้ข้อมูลจากชีตมาทับจนของในเครื่องหาย
+      const pending = _getPending();
+      const keep = MOCK_DAILY.filter(d => pending.indexOf(d.date) >= 0);
+      const keepDates = keep.map(d => d.date);
       MOCK_DAILY.length = 0;
-      jsonD.data.forEach(d => MOCK_DAILY.push(d));
+      jsonD.data.forEach(d => { if(keepDates.indexOf(d.date) < 0) MOCK_DAILY.push(d); });
+      keep.forEach(d => MOCK_DAILY.push(d));
+      MOCK_DAILY.sort((a,b) => String(a.date).localeCompare(String(b.date)));
       _clearStockCache();
       _clearDailyIndex();
+      _saveDailyData();
+      _paintPending();
+      if(pending.length) setTimeout(()=>retryPending(true), 1500);
     }
 
     updateCounts();
@@ -897,9 +988,7 @@ function closeSidebarOnMobile(){
 function showPage(page, pushHistory=true){
   closeSidebarOnMobile();
   if(pushHistory) history.pushState({page}, '', '#' + page);
-  // show brief loader
-  const loader = document.getElementById('pageLoader');
-  if(loader){ loader.style.display='flex'; setTimeout(()=>loader.style.display='none', 350); }
+  // เดิมโชว์ loader ค้างไว้ 350ms ทั้งที่ render เสร็จทันที ทำให้รู้สึกช้ากว่าความจริง
   _updateBreadcrumb(page);
   document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
   const main = document.getElementById('mainContent');
@@ -935,7 +1024,7 @@ function onSearchInput(val){
   const filtered = getFiltered();
   const total = filtered.length;
   const pages = Math.ceil(total/PAGE_SIZE)||1;
-  const slice = filtered.slice(0, PAGE_SIZE);
+  const slice = _applySortToFiltered(filtered).slice(0, PAGE_SIZE);   // เดิมไม่เรียง ทำให้หน้า 1 กับหน้า 2 ลำดับไม่ตรงกัน
   const catLabel = currentFilter === 'all' ? 'ทั้งหมด' : currentFilter + ' — ' + (CODE_MAP[currentFilter]||'');
   const sub = document.getElementById('listSubtitle');
   if(sub) sub.textContent = catLabel + ' — แสดง ' + slice.length + ' จาก ' + total + ' รายการ';
@@ -948,6 +1037,8 @@ function filterByGroup(letter){
   currentFilter = letter;
   currentPage = 1;
   searchQ = '';
+  const _sg = document.getElementById('searchInput');
+  if(_sg) _sg.value = '';
   renderList();
 }
 
@@ -957,6 +1048,8 @@ function filterBy(code){
   currentFilter = code;
   currentPage = 1;
   searchQ = '';
+  const _si = document.getElementById('searchInput');
+  if(_si) _si.value = '';   // เดิมล้างแต่ตัวแปร ช่องยังค้างข้อความเดิมทำให้สับสน
   if(code && code !== 'all'){
     const name = CODE_MAP[code] || code;
     _updateBreadcrumb('list', code + ' — ' + name);
@@ -1033,18 +1126,11 @@ function renderDashboard(){
     </div>`;
   };
 
+  // ต้องคิดทีละสินค้า เพราะน้ำหนักต่อหน่วยของ "กระสอบ" ไม่เท่ากันในแต่ละสินค้า
+  // (เดิมรวมจำนวนข้ามสินค้าก่อนแล้วค่อยแปลง โดยส่ง no='' ทำให้กระสอบทั้งหมดตกหล่น)
   const stockSummaryKg = (codes) => {
-    const items = db.filter(r => codes.includes(r.code));
-    const byUnit = {};
-    items.forEach(r => {
-      const acc = getStockByNo(r.no);
-      Object.entries(acc).forEach(([unit,qty])=>{ byUnit[unit] = r2((byUnit[unit]||0)+qty); });
-    });
     let totalKg = 0;
-    Object.entries(byUnit).forEach(([u,q])=>{
-      if(u==='กก.'||u==='kg'){ totalKg=r2(totalKg+q); }
-      else { const k=convertToKg(q,u,''); if(k!==null) totalKg=r2(totalKg+k); }
-    });
+    db.filter(r => codes.includes(r.code)).forEach(r => { totalKg = r2(totalKg + getTotalKgByNo(r.no)); });
     return totalKg;
   };
 
@@ -1155,11 +1241,12 @@ function renderList(){
   if(!hasSearch){
     document.getElementById('mainContent').innerHTML = 
       '<div class="topbar">' +
-      '<input type="text" id="searchInput" placeholder="ค้นหา No. / Description / Code..." value="' + searchQ + '" oninput="debouncedOnSearchInput(this.value)">' +
+      '<input type="text" id="searchInput" placeholder="ค้นหา No. / Description / Code..." value="' + escHtml(searchQ) + '" oninput="debouncedOnSearchInput(this.value)">' +
       '<button class="btn btn-primary" onclick="showAddModal()">+ เพิ่มรายการ</button>' +
       '</div>' +
       '<div id="listSubtitle" style="font-size:12px;color:#888;margin-bottom:8px"></div>' +
       '<div class="table-wrap"><table id="listTable"></table></div>' +
+      '<div id="listCards"></div>' +
       '<div class="pagination" id="listPagination"></div>';
   }
 
@@ -1227,10 +1314,13 @@ function renderListTable(slice){
         '</div>'+
       '</div>';
     }).join('');
-    document.getElementById('listTable').innerHTML = cards;
-    // hide table header on mobile
-    const wrap = document.getElementById('listTable').parentElement;
-    if(wrap) wrap.style.overflowX = 'visible';
+    // การ์ดต้องอยู่ใน <div> ไม่ใช่ <table> ไม่งั้น HTML parser จะย้าย div ออกไปนอกตาราง
+    const cardBox = document.getElementById('listCards');
+    if(cardBox){ cardBox.innerHTML = cards; cardBox.style.display = 'block'; }
+    const tbl = document.getElementById('listTable');
+    if(tbl){ tbl.innerHTML = ''; tbl.style.display = 'none'; }
+    const wrap = tbl ? tbl.parentElement : null;
+    if(wrap) wrap.style.display = 'none';
   } else {
     // Table layout สำหรับคอม
     const rows = freshSlice.map(r => {
@@ -1266,6 +1356,10 @@ function renderListTable(slice){
         ${label} <span style="color:${color};font-size:10px">${icon}</span>
       </th>`;
     };
+    const cardBox2 = document.getElementById('listCards');
+    if(cardBox2){ cardBox2.innerHTML = ''; cardBox2.style.display = 'none'; }
+    const tbl2 = document.getElementById('listTable');
+    if(tbl2){ tbl2.style.display = ''; if(tbl2.parentElement) tbl2.parentElement.style.display = ''; }
     document.getElementById('listTable').innerHTML =
       '<thead><tr>' +
       '<th>ภาพ</th>' +
@@ -1314,9 +1408,9 @@ function formHTML(r={}){
   const pkgOpts = pkgMap.map(p=>`<option value="${p.val}" ${r.pkg===p.val?'selected':''}>${p.label}</option>`).join('');
   const condOpts = ['','รับน้ำหนักตามใบชั่ง','รับน้ำหนักตามบิล','อื่นๆ'].map(c=>`<option value="${c}" ${escHtml(r.cond)===c?'selected':''}>${c||'- ไม่ระบุ -'}</option>`).join('');
 
-  // สร้าง No. options ตาม code ที่เลือก
+  // รายการ No. ที่มีอยู่แล้วของ code นั้น (ใช้เป็นตัวช่วยเลือก ไม่ได้บังคับ)
   const noOpts = r.code
-    ? ITEMS_DATA.filter(d=>d.code===r.code).map(d=>`<option value="${d.no}" ${r.no===d.no?'selected':''}>${d.no} — ${d.desc}</option>`).join('')
+    ? db.filter(d=>d.code===r.code).map(d=>`<option value="${escHtml(d.no)}">${escHtml(d.desc)}</option>`).join('')
     : '';
 
   return `
@@ -1329,12 +1423,12 @@ function formHTML(r={}){
     </div>
     <div class="form-group">
       <label>No. (รหัสวัตถุดิบ) *</label>
-      ${r.code
-        ? `<select id="f_no" onchange="autoFillDesc(this.value); _checkDuplicateNo(this.value, '${r.id||''}')">
-            <option value="">- เลือก No. -</option>${noOpts}
-           </select>`
-        : `<select id="f_no" disabled><option>เลือก Code ก่อน</option></select>`
-      }
+      <input id="f_no" type="text" inputmode="numeric" autocomplete="off" list="f_no_list"
+             value="${escHtml(r.no)||''}" placeholder="พิมพ์รหัสใหม่ เช่น 001234"
+             oninput="_checkDuplicateNo(this.value, '${r.id||''}')"
+             onchange="autoFillDesc(this.value)">
+      <datalist id="f_no_list">${noOpts}</datalist>
+      <div style="font-size:11px;color:#888;margin-top:4px">พิมพ์รหัสใหม่ได้เลย หรือกดเลือกจากรหัสที่มีอยู่</div>
       <div id="duplicateWarning" style="display:none;margin-top:6px;padding:8px 12px;background:#fef9e7;border:1px solid #f39c12;border-radius:6px;font-size:12px;color:#856404">
         ⚠️ <span id="duplicateMsg"></span>
       </div>
@@ -1413,28 +1507,17 @@ function toggleCol2(pkg){
 }
 
 function updateNoOptions(code){
-  const noSelect = document.getElementById('f_no');
-  if(!code){ noSelect.disabled = true; noSelect.innerHTML = '<option>เลือก Code ก่อน</option>'; return; }
-  // ใช้ db แทน ITEMS_DATA เพื่อรองรับสินค้าที่เพิ่มใหม่
-  const items = db.filter(d => d.code === code);
-  if(items.length === 0){
-    // Code ใหม่ที่ยังไม่มีสินค้า — ให้กรอก No. เองได้เลย
-    noSelect.disabled = false;
-    noSelect.innerHTML = '<option value="">- กรอก No. ด้านล่าง -</option>';
-    const noInput = document.getElementById('f_no_manual');
-    if(noInput) noInput.style.display = 'block';
-  } else {
-    noSelect.disabled = false;
-    noSelect.innerHTML = '<option value="">- เลือก No. -</option>' +
-      items.map(d => `<option value="${d.no}">${d.no} — ${d.desc}</option>`).join('');
-  }
-  noSelect.onchange = () => autoFillDesc(noSelect.value);
+  // อัปเดตแค่รายการช่วยเลือก (datalist) ช่อง No. พิมพ์เองได้เสมอ
+  const list = document.getElementById('f_no_list');
+  if(!list) return;
+  const items = code ? db.filter(d => d.code === code) : [];
+  list.innerHTML = items.map(d => `<option value="${escHtml(d.no)}">${escHtml(d.desc)}</option>`).join('');
 }
 
 function autoFillDesc(no){
   if(!no) return;
-  const item = db.find(d => d.no === no) || ITEMS_DATA.find(d => d.no === no);
-  if(!item) return;
+  const item = db.find(d => d.no === no);
+  if(!item) return;   // รหัสใหม่ = ปล่อยให้ผู้ใช้กรอกชื่อเอง ไม่ทับของที่พิมพ์ไว้
   document.getElementById('f_desc').value = item.desc || '';
   // auto fill pkg, col2, cond ด้วย
   const pkgSel = document.getElementById('f_pkg');
@@ -1477,7 +1560,7 @@ async function postSheet(payload){
   try {
     const body = {...payload, token: API_TOKEN};
     // ส่ง Content-Type: text/plain เพื่อ bypass CORS preflight
-    const res = await fetch(GS_URL, {
+    const res = await fetchTO(GS_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify(body),
@@ -1565,7 +1648,7 @@ async function saveNew(){
     'สถานที่จัดเก็บ': newItem.storage,
     'หมายเหตุ': newItem.notes,
   };
-  const res = await fetch(GS_URL, {
+  const res = await fetchTO(GS_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify(payload),
@@ -1613,8 +1696,8 @@ async function saveEdit(id){
       pkg:     d.pkg     || '',
       col2:    d.col2    || '',
       cond:    d.cond    || '',
-      loc:     d.loc     || '',
-      storage: d.storage || '',
+      loc:     d.loc     || r.loc     || '',   // ฟอร์มไม่มีช่องนี้ -> คงค่าเดิมไว้ ไม่เขียนทับด้วยค่าว่าง
+      storage: d.storage || r.storage || '',
       image:   d.image   || '',
       image2:  d.image2  || '',
       notes:   d.notes   || '',
@@ -1637,7 +1720,7 @@ async function saveEdit(id){
       'สถานที่จัดเก็บ': updated.storage,
       'หมายเหตุ': updated.notes,
     };
-    const res = await fetch(GS_URL, {
+    const res = await fetchTO(GS_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify(payload),
@@ -1648,6 +1731,7 @@ async function saveEdit(id){
 
     const idx = db.findIndex(x=>x.id===id);
     db[idx] = updated;
+    _clearStockCache();   // นน./หน่วย อาจเปลี่ยน ต้องคำนวณยอด กก. ใหม่
     closeModal();
     showToast('✅ แก้ไข ' + (d.no||r.no) + ' เรียบร้อย');
     renderList();
@@ -1662,7 +1746,7 @@ async function deleteItem(id){
   const r = db.find(x=>x.id===id); if(!r) return;
   try {
     const payload = { action: 'deleteItem', token: API_TOKEN, 'No.': r.no };
-    const res = await fetch(GS_URL, {
+    const res = await fetchTO(GS_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify(payload),
@@ -1672,9 +1756,8 @@ async function deleteItem(id){
     if(!json.ok) throw new Error(json.error || 'ลบไม่สำเร็จ');
 
     db = db.filter(x=>x.id!==id);
-    MOCK_DAILY.forEach(day => {
-      day.entries = day.entries.filter(e => e.no !== r.no);
-    });
+    // เก็บประวัติการบันทึกไว้เหมือนเดิม (ไม่ยิงลบทีละวันซึ่งช้ามาก)
+    // แต่สินค้าที่ถูกลบจะไม่ถูกนับเป็นสต็อกอีก เพราะทุกหน้าคำนวณจาก db เป็นหลัก
     _clearStockCache();
     _clearDailyIndex();
     updateCounts();
@@ -1701,10 +1784,11 @@ function showDetail(id){
   const accStocks = Object.values(accumulated).filter(s=>s.qty>0);
 
   // รวม กก. ทั้งหมด
-  let grandKg = 0;
+  let grandKg = 0, unknownKg = 0;
   accStocks.forEach(s=>{
     const k = convertToKg(s.qty, s.unit, r.no);
-    grandKg = r2(grandKg + (k!==null ? k : s.qty));
+    if(k === null) unknownKg++;              // แปลงไม่ได้ = ข้าม ไม่ใช่เอาจำนวนดิบมาบวก
+    else grandKg = r2(grandKg + k);
   });
 
   const stockHTML = accStocks.length ? `
@@ -1712,7 +1796,7 @@ function showDetail(id){
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
         <div style="font-size:12px;font-weight:600;color:#1a5276">📦 สต็อกปัจจุบัน (สะสมจากประวัติ)</div>
         <span style="background:#1a5276;color:white;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700">
-          รวม ${grandKg.toLocaleString()} กก.
+          รวม ${grandKg.toLocaleString()} กก.${unknownKg?' +?':''}
         </span>
       </div>
       <div style="border-top:1px solid var(--rule)">
@@ -1725,7 +1809,7 @@ function showDetail(id){
             </div>
             <div style="text-align:right;white-space:nowrap">
               <div style="font-weight:600;color:#2874a6">${(s.unit==='กก.'||s.unit==='kg' ? '-' : s.qty.toLocaleString()+' '+escHtml(s.unit))}</div>
-              <div style="font-weight:700;color:#1a5276">${(kg!==null ? kg.toLocaleString()+' กก.' : s.qty.toLocaleString()+' กก.')}</div>
+              <div style="font-weight:700;color:#1a5276">${(kg!==null ? kg.toLocaleString()+' กก.' : 'ไม่ทราบ กก.')}</div>
             </div>
           </div>`;
         }).join('')}
@@ -1785,6 +1869,19 @@ function showDetail(id){
 
 function closeModal(){ document.getElementById('modalBg').classList.remove('open'); }
 
+// เปิดรูปเต็มจอ (เดิมใช้ window.open(data:...) ซึ่ง Chrome/Safari บล็อก กดแล้วไม่มีอะไรเกิดขึ้น)
+function openImgViewer(src){
+  const v = document.getElementById('imgViewer');
+  if(!v) return;
+  document.getElementById('imgViewerPic').src = src;
+  v.classList.add('open');
+}
+function closeImgViewer(){
+  const v = document.getElementById('imgViewer');
+  if(v){ v.classList.remove('open'); document.getElementById('imgViewerPic').src = ''; }
+}
+document.addEventListener('keydown', e => { if(e.key === 'Escape') closeImgViewer(); });
+
 // ===== กล่องยืนยันของแอปเอง แทน confirm() ของเบราว์เซอร์ =====
 // (confirm() ดั้งเดิมมักถูกบล็อก/ไม่แสดงผลเมื่อเปิดผ่าน webview ในแอป เช่น LINE, Facebook)
 function customConfirm(message){
@@ -1818,6 +1915,16 @@ function showToast(msg, type='success'){
   t.textContent = msg; t.className = `toast ${type}`; t.style.display='block';
   setTimeout(()=>t.style.display='none',3000);
 }
+
+// เมนูที่เป็น <a> ไม่มี href กด Enter/Space ไม่ได้ ต้องผูกให้เอง
+document.addEventListener('keydown', e => {
+  if(e.key !== 'Enter' && e.key !== ' ') return;
+  const el = e.target;
+  if(el && el.getAttribute && el.getAttribute('role') === 'button' && el.tagName === 'A'){
+    e.preventDefault();
+    el.click();
+  }
+});
 
 function toggleAcc(h){
   h.classList.toggle('open');
@@ -1947,7 +2054,9 @@ function getWeightPerUnit(no){
 function r2(n){ return parseFloat(parseFloat(n).toFixed(2)); }
 
 function convertToKg(qty, unit, no, overrideWpu){
-  if(unit === 'กก.' || unit === 'kg') return null;
+  // คืน "ตัวเลข" = แปลงเป็น กก. ได้  |  คืน null = ไม่รู้น้ำหนักต่อหน่วย จึงแปลงไม่ได้
+  // (เดิมหน่วย กก. คืน null ทำให้หลายที่เผลอเอาจำนวนดิบไปบวกเป็น กก.)
+  if(unit === 'กก.' || unit === 'kg') return r2(qty);
   if(overrideWpu && parseFloat(overrideWpu) > 0) return r2(qty * parseFloat(overrideWpu));
   const wpuMap = {
     'กระสอบ': getWeightPerUnit(no),
@@ -2090,7 +2199,15 @@ function renderStockEdit(container){
       if(bi > -1) return 1;
       return 0;
     });
-    return filtered.map(r => renderItem(r)).join('');
+    const MAX_SHOW = 40;
+    const shown = filtered.slice(0, MAX_SHOW);
+    let html = shown.map(r => renderItem(r)).join('');
+    if(filtered.length > MAX_SHOW){
+      html += '<div style="text-align:center;padding:16px;color:#888;font-size:12px">'+
+              'พบ ' + filtered.length + ' รายการ แสดง ' + MAX_SHOW + ' รายการแรก — พิมพ์ค้นหาให้เจาะจงขึ้นเพื่อดูรายการที่ต้องการ' +
+              '</div>';
+    }
+    return html;
   }
   container.innerHTML = `
   <div style="margin-bottom:14px">
@@ -2134,7 +2251,9 @@ function renderStockEdit(container){
 
 // เก็บรูปของแต่ละ item
 if(!window._seImgs) window._seImgs = {}; // { itemId: [base64, base64, ...] }
-const MAX_STOCK_PHOTOS = 3;
+// ทุกครั้งที่บันทึก ระบบต้องส่ง "ทั้งวัน" ขึ้นชีตใหม่ (ข้อจำกัดของ action saveDaily เดิม)
+// จึงลดจำนวน/ขนาดรูปลง เพื่อไม่ให้ payload บวมจนช้าหรือชนลิมิตของ Google Sheets
+const MAX_STOCK_PHOTOS = 2;
 
 async function uploadSEImg(itemId, input){
   const files = Array.from(input.files || []);
@@ -2157,7 +2276,7 @@ async function uploadSEImg(itemId, input){
   for(let i = 0; i < toProcess.length; i++){
     try {
       // ใช้ค่าบีบอัดที่เล็กกว่าปกติ เพราะจะเก็บหลายรูปรวมกันใน Sheet เซลล์เดียว
-      const base64 = await compressImageToBase64(toProcess[i], 12000);
+      const base64 = await compressImageToBase64(toProcess[i], 9000);
       if(!base64) throw new Error('ไม่สามารถประมวลผลรูปได้');
       window._seImgs[itemId].push(base64);
       status.textContent = '⏳ กำลังบีบอัดรูป (' + (i+1) + '/' + toProcess.length + ')...';
@@ -2310,7 +2429,7 @@ async function saveStockItem(itemId, btnEl){
 
   const _setBtnState = (saving) => {
     const btn = btnEl || document.querySelector(`button[onclick^="saveStockItem(${itemId}"]`);
-    if(btn){ btn.disabled = saving; btn.textContent = saving ? '⏳ กำลังบันทึก...' : '+ บวกเพิ่ม'; }
+    if(btn){ btn.disabled = saving; btn.textContent = saving ? '⏳ กำลังบันทึก...' : 'บันทึก'; }
   };
   const _showSavingOverlay = (show, msg) => {
     const loader = document.getElementById('pageLoader');
@@ -2377,7 +2496,7 @@ async function saveStockItem(itemId, btnEl){
     db[idx].stocks = existingStocks;
 
     const today = new Date();
-    const dateStr = today.toISOString().split('T')[0];
+    const dateStr = localDateStr(today);
     const months = 'มกราคม กุมภาพันธ์ มีนาคม เมษายน พฤษภาคม มิถุนายน กรกฎาคม สิงหาคม กันยายน ตุลาคม พฤศจิกายน ธันวาคม'.split(' ');
     const dateTh = `${today.getDate()} ${months[today.getMonth()]} ${today.getFullYear()+543}`;
     let todayRecord = MOCK_DAILY.find(d => d.date === dateStr);
@@ -2415,7 +2534,7 @@ async function saveStockItem(itemId, btnEl){
         recorded_by: currentUser || 'ผู้ใช้',
         entries: todayRecord.entries,
       };
-      const res = await fetch(GS_URL, {
+      const res = await fetchTO(GS_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(payload),
@@ -2426,6 +2545,7 @@ async function saveStockItem(itemId, btnEl){
     } catch(e) {
       syncOk = false; syncErrMsg = e.message;
     }
+    if(syncOk) _clearPending(dateStr); else _markPending(dateStr);
 
     // reset input (ทำหลังจาก sync เสร็จแล้วเท่านั้น กันกดซ้ำระหว่างรอ)
     window._seStocks[itemId] = [{location:'',loc:'',qty:'',unit:''}];
@@ -2449,7 +2569,7 @@ async function saveStockItem(itemId, btnEl){
     if(syncOk){
       showToast('✅ บวกเพิ่ม ' + (r.desc||r.no) + ' เรียบร้อย (sync Sheet แล้ว)');
     } else {
-      showToast('⚠️ บันทึกในเครื่องแล้ว แต่ sync Google Sheet ไม่สำเร็จ: ' + syncErrMsg, 'error');
+      showToast('⚠️ เก็บไว้ในเครื่องแล้ว แต่ยังไม่ขึ้น Sheet: ' + syncErrMsg + ' — ระบบจะลองส่งใหม่ให้เอง อย่าเพิ่งล้างข้อมูลเบราว์เซอร์', 'error');
     }
 
     // re-render รายการ (ตอนนี้ค่อยสร้างปุ่มใหม่ทับของเดิม เพราะ sync เสร็จแล้วจริง)
@@ -2518,7 +2638,8 @@ function renderStockView(container){
           <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
             ${Object.entries(totalByUnit).map(([unit,qty])=>{
               const kg = convertToKg(qty, unit, r.no);
-              const kgStr = kg !== null ? ` = ${kg.toLocaleString()} กก.` : '';
+              const isKg = (unit === 'กก.' || unit === 'kg');
+              const kgStr = (kg !== null && !isKg) ? ` = ${kg.toLocaleString()} กก.` : '';
               return `<span style="background:#1a5276;color:white;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700">
                 รวม ${qty.toLocaleString()} ${unit}${kgStr}
               </span>`;
@@ -2601,7 +2722,8 @@ function renderStockView(container){
           <div style="display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end">
             ${Object.entries(totalByUnit).map(([unit,qty])=>{
               const kg = convertToKg(qty, unit, r.no);
-              const kgStr = kg !== null ? ` = ${kg.toLocaleString()} กก.` : '';
+              const isKg = (unit === 'กก.' || unit === 'kg');
+              const kgStr = (kg !== null && !isKg) ? ` = ${kg.toLocaleString()} กก.` : '';
               return `<span style="background:#1a5276;color:white;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:700">
                 รวม ${qty.toLocaleString()} ${unit}${kgStr}
               </span>`;
@@ -2669,8 +2791,24 @@ function _loadDailyData(){
 function _saveDailyData(){
   try {
     localStorage.setItem('spm_daily_data', JSON.stringify(MOCK_DAILY));
-  } catch(e) {
-    showToast('⚠️ พื้นที่เก็บข้อมูลเต็ม', 'error');
+    return;
+  } catch(e) {}
+  // พื้นที่เต็ม -> ลองใหม่โดยตัดรูปออกจากแคชในเครื่อง (ตัวจริงอยู่บน Google Sheet แล้ว)
+  try {
+    const slim = MOCK_DAILY.map(d => ({...d, entries: (d.entries||[]).map(e => ({...e, images: []}))}));
+    localStorage.setItem('spm_daily_data', JSON.stringify(slim));
+    showToast('⚠️ พื้นที่เครื่องเต็ม — ล้างแคชรูปในเครื่องออกแล้ว (ข้อมูลบน Sheet ครบ)', 'error');
+    return;
+  } catch(e2) {}
+  // ยังไม่พอ -> เก็บเฉพาะ 60 วันล่าสุด
+  try {
+    const cut = localDateStr(new Date(Date.now() - 60*86400000));
+    const recent = MOCK_DAILY.filter(d => String(d.date) >= cut)
+                             .map(d => ({...d, entries: (d.entries||[]).map(e => ({...e, images: []}))}));
+    localStorage.setItem('spm_daily_data', JSON.stringify(recent));
+    showToast('⚠️ พื้นที่เครื่องเต็ม — เก็บแคชเฉพาะ 60 วันล่าสุด', 'error');
+  } catch(e3) {
+    showToast('⚠️ บันทึกลงเครื่องไม่ได้ (พื้นที่เต็ม) แต่ข้อมูลถูกส่งขึ้น Sheet แล้ว', 'error');
   }
 }
 let MOCK_DAILY = _loadDailyData();
@@ -2679,6 +2817,8 @@ let MOCK_DAILY = _loadDailyData();
 // ป้องกันปัญหา webview บางแอป (เช่น LINE) ไม่อ่านขนาดจอตามจริง ทำให้ CSS media query ไม่ทำงาน
 // ใช้ JS เช็คขนาดจอจริงแล้วบังคับ style ตรงๆ แทน + MutationObserver คอยเช็คซ้ำทุกครั้งที่มีเนื้อหาใหม่
 function _applyMobileFixes(){
+  // ออกก่อนถ้าหน้านี้ไม่มี element ที่ต้องจัดการเลย (ลดงานตอน DOM เปลี่ยนบ่อยๆ)
+  if(!document.querySelector('.table-view-desktop,.table-view-mobile,.stock-row,.se-row-header')) return;
   const isMobile = window.innerWidth <= 768;
 
   document.querySelectorAll('.table-view-desktop').forEach(el => { el.style.display = isMobile ? 'none' : ''; });
@@ -2708,7 +2848,7 @@ function _debounceEarly(fn, wait){
     t = setTimeout(() => fn.apply(this, args), wait);
   };
 }
-const _mobileFixObserver = new MutationObserver(_debounceEarly(() => { _applyMobileFixes(); }, 150));
+const _mobileFixObserver = new MutationObserver(_debounceEarly(() => { _applyMobileFixes(); }, 250));
 document.addEventListener('DOMContentLoaded', () => {
   const mainContent = document.getElementById('mainContent');
   if(mainContent) _mobileFixObserver.observe(mainContent, { childList: true, subtree: true });
@@ -2719,6 +2859,16 @@ if(document.readyState !== 'loading'){
   const mainContent = document.getElementById('mainContent');
   if(mainContent) _mobileFixObserver.observe(mainContent, { childList: true, subtree: true });
   _applyMobileFixes();
+}
+
+// วาดหน้าประวัติใหม่อย่างปลอดภัย (ถ้ายังไม่เคยเปิดหน้านี้ ให้ render ทั้งหน้าแทน)
+function _redrawDaily(date){
+  if(typeof window._doRender === 'function'){
+    _setDailyContent(window._doRender(date));
+  } else {
+    const el = document.getElementById('mainContent');
+    if(el) renderDaily(el);
+  }
 }
 
 function _setDailyContent(html){
@@ -2750,7 +2900,8 @@ function renderDaily(container){
 
     // หา locations ทั้งหมดของวันนี้
     // normalize location ทุก entry ก่อน
-    const normEntries = day.entries.map(e => ({...e, location: normLoc(e.location||'')}));
+    // ติด _idx = ตำแหน่งจริงใน day.entries ไปกับทุกแถว จะได้แก้/ลบไม่ผิดแถวแม้ค่าซ้ำกันทุกช่อง
+    const normEntries = day.entries.map((e,i) => ({...e, _idx:i, location: normLoc(e.location||'')}));
     const locations = ['all', ...new Set(normEntries.map(e => e.location).filter(Boolean))];
 
     // กรองตาม location และเรียงล่าสุดขึ้นบน
@@ -2776,11 +2927,8 @@ function renderDaily(container){
       const loc = e.location||'ไม่ระบุ';
       if(!locTotalsDay[loc]) locTotalsDay[loc] = 0;
       const kg = convertToKg(e.qty, e.unit, e.no, e.kgPerUnit);
-      if(kg !== null){
-        locTotalsDay[loc] = r2(locTotalsDay[loc] + kg);
-      } else if(e.unit !== 'กก.' && e.unit !== 'kg') {
-        skippedCount++;
-      }
+      if(kg !== null) locTotalsDay[loc] = r2(locTotalsDay[loc] + kg);
+      else skippedCount++;
     });
     const grandTotalDay = r2(Object.values(locTotalsDay).reduce((a,b)=>a+b,0));
     const totalSection = Object.keys(locTotalsDay).length ? `
@@ -2802,7 +2950,7 @@ function renderDaily(container){
       </div>` : '';
 
     const locBtns = locations.map(loc => `
-      <button onclick="window._selectLoc('${loc}', '${date}')" id="locbtn_${loc.replace(/ /g,'_')}"
+      <button onclick="window._selectLoc('${escJs(loc)}', '${escJs(date)}')" id="locbtn_${loc.replace(/ /g,'_')}"
         style="padding:4px 12px;border-radius:20px;border:1px solid ${loc===selectedLocation?'#1a5276':'#d5d8dc'};
         background:${loc===selectedLocation?'#1a5276':'white'};color:${loc===selectedLocation?'white':'#555'};
         cursor:pointer;font-size:12px;white-space:nowrap">
@@ -2851,12 +2999,7 @@ function renderDaily(container){
           </tr></thead>
           <tbody>
             ${s.rows.map(r=>{
-              // ใช้ index ใน day.entries จริงๆ เพื่อป้องกันแก้/ลบผิด entry
-              const ei = day.entries.findIndex(e=>
-                e.no===r.no && normLoc(e.location||'')===r.location && 
-                e.storage===r.storage && e.qty===r.qty && 
-                e.unit===r.unit && e.note===r.note
-              );
+              const ei = r._idx;
               const rowKg = convertToKg(r.qty, r.unit, r.no, r.kgPerUnit);
               const rowWpu = (r.kgPerUnit && parseFloat(r.kgPerUnit) > 0) ? parseFloat(r.kgPerUnit)
                 : (r.unit === 'bigbag' ? 1000 : (r.unit === 'ตัน' ? 1000 : getWeightPerUnit(r.no)));
@@ -2879,7 +3022,7 @@ function renderDaily(container){
               const photos = r.images && r.images.length ? r.images : (r.image ? [r.image] : []);
               if(!photos.length) return '';
               return '<tr><td colspan="7" style="padding:4px 10px"><div style="display:flex;gap:6px;flex-wrap:wrap">'
-                + photos.map(src=>'<img src="'+src+'" style="width:64px;height:64px;object-fit:cover;border-radius:5px;border:1px solid #eee;cursor:pointer" onclick="window.open(this.src)">').join('')
+                + photos.map(src=>'<img src="'+src+'" style="width:64px;height:64px;object-fit:cover;border-radius:5px;border:1px solid #eee;cursor:pointer" onclick="openImgViewer(this.src)">').join('')
                 + '</div></td></tr>';
             })()}`;
             }).join('')}
@@ -2888,11 +3031,7 @@ function renderDaily(container){
         </div>
         <div class="table-view-mobile">
           ${s.rows.map(r=>{
-            const ei = day.entries.findIndex(e=>
-              e.no===r.no && normLoc(e.location||'')===r.location && 
-              e.storage===r.storage && e.qty===r.qty && 
-              e.unit===r.unit && e.note===r.note
-            );
+            const ei = r._idx;
             const rowKg = convertToKg(r.qty, r.unit, r.no, r.kgPerUnit);
             const rowWpu = (r.kgPerUnit && parseFloat(r.kgPerUnit) > 0) ? parseFloat(r.kgPerUnit)
               : (r.unit === 'bigbag' ? 1000 : (r.unit === 'ตัน' ? 1000 : getWeightPerUnit(r.no)));
@@ -2909,7 +3048,7 @@ function renderDaily(container){
                 <span style="font-weight:700;color:#1a5276">รวม: ${rowKg!==null ? rowKg.toLocaleString()+' กก.' : '-'}</span>
               </div>
               ${r.note ? `<div style="font-size:12px;color:#888;margin-bottom:6px">📝 ${escHtml(r.note)}</div>` : ''}
-              ${photos.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${photos.map(src=>'<img src="'+src+'" style="width:56px;height:56px;object-fit:cover;border-radius:5px;border:1px solid #eee;cursor:pointer" onclick="window.open(this.src)">').join('')}</div>` : ''}
+              ${photos.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${photos.map(src=>'<img src="'+src+'" style="width:56px;height:56px;object-fit:cover;border-radius:5px;border:1px solid #eee;cursor:pointer" onclick="openImgViewer(this.src)">').join('')}</div>` : ''}
               <div style="display:flex;gap:8px">
                 <button onclick="editDailyEntry('${date}',${ei})" style="flex:1;padding:8px;background:white;border:1px solid var(--rule);border-radius:6px;font-size:13px;color:var(--ink-2);display:flex;align-items:center;justify-content:center;gap:5px">✏️ แก้ไข</button>
                 <button onclick="deleteDailyEntry('${date}',${ei})" style="flex:1;padding:8px;background:white;border:1px solid #fcd;border-radius:6px;font-size:13px;color:#e74c3c;display:flex;align-items:center;justify-content:center;gap:5px">🗑️ ลบ</button>
@@ -2934,37 +3073,17 @@ function renderDaily(container){
 
   window._selectLoc = (loc, date) => {
     window._dailySelectedLoc = loc;
-    _setDailyContent(doRender(date));
+    _redrawDaily(date);
   };
 
-  const dateBtns = MOCK_DAILY.map(d => `
-    <button onclick="window._selectDay('${d.date}')" id="daybtn_${d.date}"
-      style="padding:6px 12px;border-radius:6px;border:1px solid ${d.date===selectedDate?'#1a5276':'#d5d8dc'};
-      background:${d.date===selectedDate?'#1a5276':'white'};color:${d.date===selectedDate?'white':'#555'};
-      cursor:pointer;font-size:12px;white-space:nowrap">
-      ${d.date_th.split(' ').slice(0,2).join(' ')}
-    </button>`).join('');
-
-  // แสดงแค่ 30 วันล่าสุดก่อน
-  let visibleDays = 30;
-  const allDays = MOCK_DAILY.slice().reverse(); // เรียงใหม่สุดก่อน
-
-  const renderDayBtns = (days) => days.map(d => `
-    <button onclick="window._selectDay('${d.date}')" id="daybtn_${d.date}"
-      style="padding:5px 12px;border-radius:6px;border:1px solid ${d.date===selectedDate?'#1a5276':'#d5d8dc'};
-      background:${d.date===selectedDate?'#1a5276':'white'};color:${d.date===selectedDate?'white':'#555'};
-      cursor:pointer;font-size:12px;white-space:nowrap">
-      ${d.date_th.split(' ').slice(0,2).join(' ')}
-    </button>`).join('');
-
-  const getVisibleDays = () => allDays.slice(0, visibleDays);
+  // (เดิมมีโค้ดสร้างแถบปุ่มเลือกวัน แต่ไม่เคยถูกใส่ลงหน้าเลย และ _loadMoreDays อ้าง element ที่ไม่มีอยู่ -> ตัดออก)
 
   container.innerHTML = `
   <div style="margin-bottom:14px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <div>
         <div style="font-size:15px;font-weight:600;color:#1a5276">📅 ประวัติสต็อกรายวัน</div>
-        <div style="font-size:12px;color:#888;margin-top:2px">แสดง ${Math.min(visibleDays, allDays.length)} จาก ${allDays.length} วัน</div>
+        <div style="font-size:12px;color:#888;margin-top:2px">มีข้อมูลทั้งหมด ${MOCK_DAILY.length} วัน</div>
       </div>
       <div style="position:relative;display:inline-block" id="dailyActionWrap">
         <!-- Desktop: แสดงปุ่มปกติ -->
@@ -3016,30 +3135,8 @@ function renderDaily(container){
   <div id="dailyContent">${doRender(selectedDate)}</div>`;
   _fixMobileTableToggle();
 
-  window._loadMoreDays = () => {
-    visibleDays = Math.min(visibleDays + 30, allDays.length);
-    const bar = document.getElementById('printTopBar');
-    bar.innerHTML = renderDayBtns(getVisibleDays());
-    // อัปเดตปุ่ม โหลดเพิ่ม
-    const loadBtn = bar.nextElementSibling;
-    if(loadBtn && loadBtn.tagName === 'BUTTON'){
-      if(allDays.length <= visibleDays){
-        loadBtn.style.display = 'none';
-      } else {
-        loadBtn.textContent = `⬇ โหลดเพิ่ม (${allDays.length - visibleDays} วันที่เหลือ)`;
-      }
-    }
-    // re-highlight selected
-    allDays.forEach(d => {
-      const btn = document.getElementById('daybtn_' + d.date);
-      if(btn){
-        btn.style.background = d.date === selectedDate ? '#1a5276' : 'white';
-        btn.style.color = d.date === selectedDate ? 'white' : '#555';
-        btn.style.borderColor = d.date === selectedDate ? '#1a5276' : '#d5d8dc';
-      }
-    });
-  };
-
+  // เปิดให้ฟังก์ชันข้างนอก (ลบ / แก้ไข / undo) เรียกใช้ได้ เดิมเรียก doRender ตรงๆ แล้ว ReferenceError
+  window._doRender = doRender;
   window._currentDay = selectedDate;
   window._selectDay = (date) => {
     if(!date) return;
@@ -3050,7 +3147,7 @@ function renderDaily(container){
     const lbl = document.getElementById('dailyDateLabel');
     if(lbl && window._formatThDate) lbl.textContent = window._formatThDate(date);
     window._dpViewYear = null; window._dpViewMonth = null;
-    _setDailyContent(doRender(date));
+    _redrawDaily(date);
     // อัปเดตสีปุ่ม
     MOCK_DAILY.forEach(d => {
       const btn = document.getElementById('daybtn_' + d.date);
@@ -3070,12 +3167,13 @@ function showVariance(){
   if(dates.length < 2){ showToast('ต้องมีข้อมูลอย่างน้อย 2 วัน','error'); return; }
 
   document.getElementById('modalBox').innerHTML = `
-    <h2>📊 เปรียบเทียบสต็อก 2 วัน</h2>
+    <h2>📊 เปรียบเทียบยอดที่บันทึก 2 วัน</h2>
+    <div style="font-size:11.5px;color:#888;margin:-10px 0 14px">เทียบยอดที่ "บันทึกไว้" ในสองวันนั้น ไม่ใช่ยอดคงเหลือสะสม</div>
     <div class="form-row" style="margin-bottom:16px">
       <div class="form-group">
         <label>วันที่ 1 (เดิม)</label>
         <select id="var_date1">
-          ${dates.map(d=>'<option value="'+d.date+'">'+d.date_th+'</option>').join('')}
+          ${dates.map((d,i)=>'<option value="'+d.date+'" '+(i===1?'selected':'')+'>'+d.date_th+'</option>').join('')}
         </select>
       </div>
       <div class="form-group">
@@ -3118,7 +3216,7 @@ function exportExcel(){
   });
   
   // แปลงเป็น CSV
-  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const csv = rows.map(r => r.map(csvCell).join(',')).join('\r\n');
   const bom = '\uFEFF'; // BOM สำหรับ Excel ภาษาไทย
   const blob = new Blob([bom + csv], {type:'text/csv;charset=utf-8'});
   const url = URL.createObjectURL(blob);
@@ -3264,9 +3362,10 @@ function calcVariance(){
   const sumDay = (day) => {
     const acc = {};
     day.entries.forEach(e=>{
-      if(!acc[e.no]) acc[e.no] = {no:e.no, desc:e.desc, code:e.code, kg:0, unit:e.unit, qty:0};
+      if(!acc[e.no]) acc[e.no] = {no:e.no, desc:e.desc, code:e.code, kg:0, unit:e.unit, qty:0, unknown:false};
       const kg = convertToKg(e.qty, e.unit, e.no);
-      acc[e.no].kg = r2(acc[e.no].kg + (kg!==null?kg:e.qty));
+      if(kg !== null) acc[e.no].kg = r2(acc[e.no].kg + kg);
+      else acc[e.no].unknown = true;
       acc[e.no].qty = r2(acc[e.no].qty + e.qty);
     });
     return acc;
@@ -3346,7 +3445,7 @@ function undoDelete(){
   if(day){
     day.entries.push(last.data);
     showToast('✅ คืนค่าเรียบร้อย');
-    _setDailyContent(doRender(last.date));
+    _redrawDaily(last.date);
   }
 }
 
@@ -3368,7 +3467,7 @@ async function deleteDailyEntry(date, entryIdx){
         date: day.date, date_th: day.date_th,
         recorded_by: day.recorded_by, entries: day.entries,
       };
-      const res = await fetch(GS_URL, {
+      const res = await fetchTO(GS_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify(payload),
@@ -3379,7 +3478,7 @@ async function deleteDailyEntry(date, entryIdx){
     } else {
       // ถ้าไม่มี entry เหลือเลยในวันนั้น ส่ง action deleteDailyDate เพื่อลบทั้งวันออกจาก Sheet
       const payload = { action: 'deleteDailyDate', token: API_TOKEN, date: day.date };
-      const res = await fetch(GS_URL, {
+      const res = await fetchTO(GS_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify(payload),
@@ -3389,15 +3488,17 @@ async function deleteDailyEntry(date, entryIdx){
       if(!json.ok) throw new Error(json.error || 'ลบไม่สำเร็จ');
       MOCK_DAILY.splice(MOCK_DAILY.indexOf(day), 1);
     }
+    _clearPending(day.date);
     showToast('✅ ลบรายการเรียบร้อย');
   } catch(e) {
-    showToast('⚠️ ลบในเครื่องแล้ว แต่ sync Google Sheet ไม่สำเร็จ: ' + e.message, 'error');
+    _markPending(day.date);
+    showToast('⚠️ ลบในเครื่องแล้ว แต่ยังไม่ขึ้น Sheet: ' + e.message + ' — ระบบจะลองส่งใหม่ให้เอง', 'error');
   }
 
   _clearStockCache();
   _clearDailyIndex();
   _saveDailyData();
-  _setDailyContent(doRender(date));
+  _redrawDaily(date);
 }
 
 function editDailyEntry(date, entryIdx){
@@ -3534,7 +3635,7 @@ async function uploadEditEntryImg(input){
   status.textContent = '⏳ กำลังบีบอัดรูป (0/' + toProcess.length + ')...';
   for(let i = 0; i < toProcess.length; i++){
     try {
-      const base64 = await compressImageToBase64(toProcess[i], 12000);
+      const base64 = await compressImageToBase64(toProcess[i], 9000);
       if(!base64) throw new Error('ไม่สามารถประมวลผลรูปได้');
       window._editEntryImgs.push(base64);
       status.textContent = '⏳ กำลังบีบอัดรูป (' + (i+1) + '/' + toProcess.length + ')...';
@@ -3602,7 +3703,7 @@ async function saveEditDailyEntry(date, realIdx){
       date: day.date, date_th: day.date_th,
       recorded_by: day.recorded_by, entries: day.entries,
     };
-    const res = await fetch(GS_URL, {
+    const res = await fetchTO(GS_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify(payload),
@@ -3610,9 +3711,11 @@ async function saveEditDailyEntry(date, realIdx){
     });
     const json = await res.json();
     if(!json.ok) throw new Error(json.error || 'แก้ไขไม่สำเร็จ');
+    _clearPending(day.date);
     showToast('✅ แก้ไขเรียบร้อย (sync Sheet แล้ว)');
   } catch(e) {
-    showToast('⚠️ แก้ไขในเครื่องแล้ว แต่ sync Google Sheet ไม่สำเร็จ: ' + e.message, 'error');
+    _markPending(day.date);
+    showToast('⚠️ แก้ไขในเครื่องแล้ว แต่ยังไม่ขึ้น Sheet: ' + e.message + ' — ระบบจะลองส่งใหม่ให้เอง', 'error');
   }
 
   if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'บันทึก'; }
@@ -3620,7 +3723,7 @@ async function saveEditDailyEntry(date, realIdx){
   window._editEntryImgs = null;
   window._editEntryKgPerUnit = null;
   closeModal();
-  _setDailyContent(doRender(date));
+  _redrawDaily(date);
 }
 
 
@@ -3720,7 +3823,7 @@ function exportDailyPDF(mode='all'){
           <td style="padding:6px 10px;border:1px solid #ccc;font-size:11px;font-weight:600">${s.desc}</td>
           <td style="padding:6px 10px;border:1px solid #ccc;font-size:11px">รวมทุกสถานที่</td>
           <td style="padding:6px 10px;border:1px solid #ccc;text-align:right;font-weight:700;color:#1a5276;font-size:11px">
-            ${s.total.toLocaleString()} ${s.unit}${(()=>{const kg=convertToKg(s.total,s.unit,s.no);return kg?' ('+kg.toLocaleString()+' กก.)':''})()}
+            ${s.total.toLocaleString()} ${s.unit}${(()=>{if(s.unit==='กก.'||s.unit==='kg')return '';const kg=convertToKg(s.total,s.unit,s.no);return kg?' ('+kg.toLocaleString()+' กก.)':''})()}
           </td>
         </tr>`,
         ...s.rows.map(row => `
@@ -3729,7 +3832,7 @@ function exportDailyPDF(mode='all'){
           <td style="padding:5px 10px;border:1px solid #ddd;color:#555;font-size:10px;padding-left:20px">↳ ${escHtml(row.location||'-')} / ${escHtml(row.storage||'-')}</td>
           <td style="padding:5px 10px;border:1px solid #ddd;font-size:10px"></td>
           <td style="padding:5px 10px;border:1px solid #ddd;text-align:right;color:#2874a6;font-weight:600;font-size:10px">
-            ${row.qty.toLocaleString()} ${row.unit}${(()=>{const kg=convertToKg(row.qty,row.unit,row.no);return kg?' ('+kg.toLocaleString()+' กก.)':''})()}
+            ${row.qty.toLocaleString()} ${row.unit}${(()=>{if(row.unit==='กก.'||row.unit==='kg')return '';const kg=convertToKg(row.qty,row.unit,row.no);return kg?' ('+kg.toLocaleString()+' กก.)':''})()}
           </td>
         </tr>`)
       ]).join('');
@@ -3755,7 +3858,7 @@ function exportDailyPDF(mode='all'){
     exportEntries.forEach(e => {
       if(!locTotalsKg[e.location]) locTotalsKg[e.location] = 0;
       const kg = convertToKg(e.qty, e.unit, e.no);
-      locTotalsKg[e.location] = r2(locTotalsKg[e.location] + (kg !== null ? kg : e.qty));
+      if(kg !== null) locTotalsKg[e.location] = r2(locTotalsKg[e.location] + kg);
     });
     // grand total
     const grandTotal = r2(Object.values(locTotalsKg).reduce((a,b)=>a+b,0));
@@ -3990,7 +4093,7 @@ window._renderDatePickerCalendar = (selectedDate) => {
     const ds = toDateStr(d);
     const hasData = hasDates.has(ds);
     const isSel = ds === selectedDate;
-    const isToday = ds === new Date().toISOString().slice(0,10);
+    const isToday = ds === localDateStr();
     let style = 'width:32px;height:32px;text-align:center;border-radius:50%;cursor:pointer;font-size:12px;border:none;font-family:inherit;';
     if(isSel) style += 'background:#1a5276;color:white;font-weight:700;';
     else if(hasData) style += 'background:#dbeafe;color:#1d4ed8;font-weight:600;';
@@ -4060,11 +4163,11 @@ window._filterDailySearch = _debounce((q) => {
     g.entries.forEach(e => {
       html += '<div style="padding:10px 14px;border-bottom:1px solid var(--rule);display:flex;flex-direction:column;gap:4px">'
         + '<div style="display:flex;justify-content:space-between;align-items:center">'
-        + '<span class="badge ba" style="font-family:monospace;font-size:11px">'+e.no+'</span>'
+        + '<span class="badge ba" style="font-family:monospace;font-size:11px">'+escHtml(e.no)+'</span>'
         + '<span style="font-size:13px;font-weight:700;color:var(--blue)">'+formatQty(e.qty, e.unit, e.no)+'</span>'
         + '</div>'
         + '<div style="font-size:13px;font-weight:500;color:var(--ink)">'+escHtml(e.desc)+'</div>'
-        + '<div style="font-size:11px;color:var(--ink-3)">📍 '+normLoc(e.location||'')+'</div>'
+        + '<div style="font-size:11px;color:var(--ink-3)">📍 '+escHtml(normLoc(e.location||''))+'</div>'
         + '</div>';
     });
     html += '</div>';
@@ -4159,7 +4262,7 @@ window._selectMonth = (ym) => {
     ne.forEach(e=>{const key=e.no+'|'+e.unit;if(!sm[key])sm[key]={no:e.no,desc:e.desc,code:e.code,unit:e.unit,rows:[]};sm[key].rows.push(e);});
     const cards=Object.values(sm).map(s=>{
       const bc=s.code[0]==='A'?'ba':s.code[0]==='B'?'bb':'bc';
-      const skg=r2(s.rows.reduce((a,r)=>{const k=convertToKg(r.qty,r.unit,r.no);return r2(a+(k!==null?k:r.qty));},0));
+      const skg=r2(s.rows.reduce((a,r)=>{const k=convertToKg(r.qty,r.unit,r.no);return r2(a+(k!==null?k:0));},0));
       const rows=s.rows.map(r=>'<tr style="border-bottom:1px solid #f5f5f5"><td style="padding:4px 10px">'+(escHtml(r.location)||'-')+'</td><td style="padding:4px 10px;color:#777">'+(escHtml(r.storage)||'-')+'</td><td style="padding:4px 10px;text-align:right;font-weight:600;color:#2874a6">'+formatQty(r.qty,r.unit,r.no)+'</td></tr>').join('');
       return '<div style="background:white;border-radius:6px;padding:12px;margin-bottom:6px;border:1px solid #eef2f7">'+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
@@ -4288,71 +4391,10 @@ document.addEventListener('click', (e)=>{
 
 
 
-// ===== Session Timeout =====
-const SESSION_TIMEOUT = 30 * 60 * 1000;   // 30 นาที
-const SESSION_WARN    =  1 * 60 * 1000;   // เตือนก่อน 1 นาที
-let _sessionTimer = null;
-let _sessionWarnTimer = null;
-let _sessionWarnShown = false;
-
-function _resetSession(){
-  clearTimeout(_sessionTimer);
-  clearTimeout(_sessionWarnTimer);
-  _sessionWarnShown = false;
-
-  // ซ่อน warning ถ้ายังแสดงอยู่
-  const warn = document.getElementById('sessionWarnBanner');
-  if(warn) warn.style.display = 'none';
-
-  if(!currentUser) return; // ยังไม่ได้ login ไม่ต้องนับ
-
-  _sessionWarnTimer = setTimeout(() => {
-    if(!currentUser) return;
-    _sessionWarnShown = true;
-    const w = document.getElementById('sessionWarnBanner');
-    if(w) w.style.display = 'flex';
-    // countdown 60 วิ
-    let sec = 60;
-    window._sessionCountdownTick = setInterval(() => {
-      if(!currentUser){
-        clearInterval(window._sessionCountdownTick);
-        return;
-      }
-      sec--;
-      const el = document.getElementById('sessionCountdown');
-      if(el) el.textContent = sec;
-      if(sec <= 0){ clearInterval(window._sessionCountdownTick); }
-    }, 1000);
-  }, SESSION_TIMEOUT - SESSION_WARN);
-
-  _sessionTimer = setTimeout(() => {
-    if(!currentUser) return;
-    _doSessionLogout();
-  }, SESSION_TIMEOUT);
-}
-
-function _doSessionLogout(){
-  currentUser = '';
-  try { localStorage.removeItem('spm_current_user'); } catch(e) {}
-  if(window._sessionCountdownTick){ clearInterval(window._sessionCountdownTick); }
-  const ud = document.getElementById('userDisplay');
-  if(ud) ud.style.display = 'none';
-  const warn = document.getElementById('sessionWarnBanner');
-  if(warn) warn.style.display = 'none';
-  const overlay = document.getElementById('loginOverlay');
-  if(overlay) overlay.style.display = 'flex';
-  showToast('⏱️ หมดเวลาใช้งาน กรุณา login ใหม่', 'error');
-}
-
-function _keepSession(){
-  if(currentUser) _resetSession();
-}
-
-// track user activity
-['click','keydown','touchstart','scroll'].forEach(ev => {
-  document.addEventListener(ev, _keepSession, { passive: true });
-});
-
+// ===== Session =====
+// ถอดระบบ auto-logout ออกแล้ว (หน้าใส่ชื่อเป็นแค่ป้ายชื่อผู้บันทึก ไม่ใช่ระบบยืนยันตัวตน)
+// เดิมเตะออกทุก 30 นาที ซึ่งกวนมากเวลาถือมือถือเดินนับสต็อก และตัวนับถอยหลังยังซ้อนกันเองด้วย
+function _resetSession(){ /* no-op */ }
 
 // ===== Splash Screen =====
 function _hideSplash(){}
@@ -4380,6 +4422,25 @@ function _debounce(fn, wait){
 const debouncedGlobalSearch = _debounce(globalSearch, 200);
 const debouncedOnSearchInput = _debounce(onSearchInput, 200);
 
+// สำหรับค่าที่ต้องไปอยู่ใน '...' ของ JavaScript ภายใน attribute เช่น onclick="f('X')"
+// escHtml อย่างเดียวไม่พอ เพราะ &#39; จะถูก decode กลับเป็น ' ก่อน JS จะอ่าน
+function escJs(str){
+  return String(str==null?'':str)
+    .replace(/\\/g, '\\x5c')
+    .replace(/'/g,   '\\x27')
+    .replace(/"/g,   '\\x22')
+    .replace(/</g,   '\\x3c')
+    .replace(/>/g,   '\\x3e')
+    .replace(/\r?\n/g, ' ');
+}
+
+// ค่าที่ขึ้นต้นด้วย = + - @ จะถูก Excel ตีความเป็นสูตร ต้องบังคับให้เป็นข้อความ
+function csvCell(v){
+  let t = v == null ? '' : String(v);
+  if(/^[=+\-@\t\r]/.test(t)) t = "'" + t;
+  return '"' + t.replace(/"/g,'""') + '"';
+}
+
 function escHtml(str){
   return String(str)
     .replace(/&/g, '&amp;')
@@ -4395,7 +4456,7 @@ const _ONBOARD_KEY = 'spm_onboarded_v1';
 const _ONBOARD_STEPS = [
   {
     title: '👋 ยินดีต้อนรับ!',
-    desc: 'SPM Inventory SPM Inventory ใช้จัดการสต็อกและบันทึกการรับวัตถุดิบทั้งหมด',
+    desc: 'ระบบจัดการสต็อกและบันทึกการรับวัตถุดิบของ SPM',
     target: null,
   },
   {
@@ -4659,7 +4720,7 @@ function _exportCSV(entries, dateLabel, codeLabel, locLabel){
       e.recorded_by
     ]);
   });
-  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const csv = rows.map(r => r.map(csvCell).join(',')).join('\r\n');
   const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -4678,6 +4739,9 @@ function _exportPrintView(entries, days, dateLabel, codeLabel, locLabel){
   const main = document.getElementById('mainContent');
   const prev = main.innerHTML;
   const printDate = new Date().toLocaleDateString('th-TH',{year:'numeric',month:'long',day:'numeric'});
+  // เคลียร์หัวกระดาษกลางที่อาจค้างจากรายงานก่อนหน้า (ไฟล์นี้มีหัวของตัวเองอยู่แล้ว)
+  document.getElementById('printTitle').textContent = '';
+  document.getElementById('printSubtitle').textContent = '';
 
   // จัดกลุ่มตามวัน
   const byDay = {};
@@ -4829,7 +4893,7 @@ function showQuickAction(e, itemId){
     <div class="qa-item" onclick="closeQuickAction();showEditModal(${itemId})">
       ✏️ แก้ไขข้อมูล
     </div>
-    <div class="qa-item" onclick="closeQuickAction();showPage('stockedit');setTimeout(()=>{const el=document.getElementById('seSearchInput');if(el){el.value='${escHtml(r.no)}';window._doSEFilter('${escHtml(r.no)}');}},100)">
+    <div class="qa-item" onclick="closeQuickAction();showPage('stockedit');setTimeout(()=>{const el=document.getElementById('seSearchInput');if(el){el.value='${escJs(r.no)}';window._doSEFilter('${escJs(r.no)}');}},100)">
       📦 อัปเดตสต็อก
     </div>
     <div class="qa-sep"></div>
@@ -4902,6 +4966,7 @@ function safeRow(obj, fields){
   return r;
 }
 
+_paintPending();
 loadFromSheet().then(() => {
   if(currentUser){
     const main = document.getElementById('mainContent');
