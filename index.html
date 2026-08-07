@@ -3441,8 +3441,20 @@ function showUndoToast(type, data, date){
 async function undoDelete(){
   const last = _undoStack.pop();
   if(!last) return;
-  const day = MOCK_DAILY.find(d=>d.date===last.date);
-  if(!day) return;
+  let day = MOCK_DAILY.find(d=>d.date===last.date);
+
+  // [BugFix #8] ถ้าวันนั้นถูกลบออกไปแล้ว (entry สุดท้ายของวันถูกลบแล้ว sync สำเร็จ)
+  // ให้สร้าง day object ใหม่แล้วใส่กลับเข้า MOCK_DAILY แทนที่จะ return เงียบๆ
+  if(!day){
+    day = {
+      date: last.date,
+      date_th: last.data.date_th || last.date,
+      entries: [],
+      recorded_by: currentUser || '-',
+    };
+    MOCK_DAILY.push(day);
+    MOCK_DAILY.sort((a,b) => a.date.localeCompare(b.date));
+  }
 
   day.entries.push(last.data);
   _clearStockCache();
@@ -4159,9 +4171,10 @@ window._renderDatePickerCalendar = (selectedDate) => {
     else if(isToday) style += 'background:#f0f5fb;color:#1a5276;border:1px solid #1a5276;';
     else style += 'background:none;color:#333;';
     cells += `<td style="padding:2px"><button style="${style}" onclick="window._pickDate('${ds}')">${d}</button></td>`;
-    // [BugFix #7] ปิด </tr> ทุกสัปดาห์รวมถึงแถวสุดท้ายด้วย
     if((firstDay + d) % 7 === 0) cells += '</tr>' + (d < daysInMonth ? '<tr>' : '');
   }
+  // [BugFix #8] ปิด </tr> แถวสุดท้ายถ้าวันสุดท้ายของเดือนไม่ตรงกับวันเสาร์
+  if((firstDay + daysInMonth) % 7 !== 0) cells += '</tr>';
 
   popup.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
