@@ -557,7 +557,7 @@ tbody tr:hover {
   .dash-card { min-width: unset !important; width: 100% !important; }
 
   /* KPI grid - 2x2 on mobile */
-  .kpi-grid { grid-template-columns: repeat(3,1fr) !important; }
+  .kpi-grid { grid-template-columns: repeat(2,1fr) !important; }
   .kpi-box { padding: 12px !important; }
   .kpi-box .kpi-num { font-size: 18px !important; }
 
@@ -594,7 +594,8 @@ tbody tr:hover {
 }
 @media (max-width: 768px) { #menuToggle { display: block; } }
 
-/* ── Login ── */ {
+/* ── Login ── */
+#loginOverlay {
   position: fixed; inset: 0;
   background: var(--navy);
   z-index: 9999;
@@ -1188,7 +1189,7 @@ function renderDashboard(){
     </div>
 
     <!-- KPI Summary Bar -->
-    <div class="kpi-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">
+    <div class="kpi-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px" data-note="mobile overrides to 2col via CSS !important">
       <div class="kpi-hover" style="background:var(--navy);color:white;border-radius:10px;padding:14px;text-align:center">
         <div style="font-size:22px;font-weight:800">${total.toLocaleString()}</div>
         <div style="font-size:10px;opacity:.6;margin-top:2px;text-transform:uppercase;letter-spacing:.5px">รายการทั้งหมด</div>
@@ -1560,13 +1561,13 @@ async function postSheet(payload){
   try {
     const body = {...payload, token: API_TOKEN};
     // ส่ง Content-Type: text/plain เพื่อ bypass CORS preflight
+    // ใช้ fetchTO ที่มี AbortController รองรับ iOS เก่า (ลบ AbortSignal.timeout ที่ไม่รองรับ iOS<16 ออก)
     const res = await fetchTO(GS_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify(body),
       redirect: 'follow',
-      signal: AbortSignal.timeout(15000),
-    });
+    }, 15000);
     const j = await res.json();
     if(j.result === 'unauthorized'){
       showToast('❌ ไม่มีสิทธิ์เข้าถึงระบบ', 'error');
@@ -1574,7 +1575,7 @@ async function postSheet(payload){
     }
     return j.result === 'success';
   } catch(e) {
-    if(e.name === 'TimeoutError'){
+    if(e.message && e.message.includes('หมดเวลา')){
       showToast('❌ การเชื่อมต่อหมดเวลา กรุณาลองใหม่', 'error');
     } else {
       showToast('❌ เชื่อมต่อระบบไม่ได้ กรุณาลองใหม่', 'error');
@@ -2693,7 +2694,7 @@ function renderStockView(container){
       style="width:100%;padding:8px 12px;border:1px solid #d5d8dc;border-radius:6px;font-size:13px;margin-bottom:12px"
       oninput="window._renderSV(this.value)">
   </div>
-  <div id="svWrap">${renderCards(selectedSVCode, '')}</div>`;
+  <div id="svWrap">${renderCardsFiltered(selectedSVCode, '')}</div>`;
 
   // แก้ renderCards ให้รับ code filter
   const renderCardsFiltered = (code, q) => {
@@ -3336,8 +3337,21 @@ function exportVariancePDF(){
     </div>`;
 
   if(_isMobileDevice()){
-    showToast('📱 กรุณาใช้ฟังก์ชัน Share → Print จากเบราว์เซอร์ของคุณ');
-    setTimeout(() => { main.innerHTML = prev; closeModal(); }, 3000);
+    showToast('📱 กรุณาใช้ Share → Print จากเบราว์เซอร์ แล้วกด "ปิด" ด้านล่าง');
+    window._mobilePrintPrev = prev;
+    window._mobilePrintClose = () => {
+      const m = document.getElementById('mainContent');
+      if(m) m.innerHTML = window._mobilePrintPrev;
+      closeModal();
+      clearTimeout(window._mobilePrintTimer);
+    };
+    main.innerHTML += `<div style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9999">
+      <button onclick="window._mobilePrintClose()"
+        style="background:#e74c3c;color:white;border:none;border-radius:8px;padding:12px 28px;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.3)">
+        ✕ ปิดหน้าพิมพ์
+      </button>
+    </div>`;
+    window._mobilePrintTimer = setTimeout(() => window._mobilePrintClose(), 30000);
   } else {
     window.print();
     main.innerHTML = prev;
@@ -3458,6 +3472,7 @@ async function deleteDailyEntry(date, entryIdx){
   // ใช้ entryIdx ตรงๆ ที่ doRender ส่งมาให้แล้ว (index ใน day.entries จริงๆ)
   if(entryIdx < 0 || entryIdx >= day.entries.length) return;
   const deleted = day.entries.splice(entryIdx, 1)[0];
+  pushUndo('delete', deleted, date);  // บัค fix: เพิ่ม undo stack ก่อน sync
 
   // sync ไป Google Sheet — ส่ง entries ที่เหลือของวันนั้นไปเขียนทับใหม่
   try {
@@ -3891,8 +3906,20 @@ function exportDailyPDF(mode='all'){
   }
 
   if(_isMobileDevice()){
-    showToast('📱 กรุณาใช้ฟังก์ชัน Share → Print จากเบราว์เซอร์ของคุณ');
-    setTimeout(() => { main.innerHTML = prev; }, 3000);
+    showToast('📱 กรุณาใช้ Share → Print จากเบราว์เซอร์ แล้วกด "ปิด" ด้านล่าง');
+    window._mobilePrintPrev = prev;
+    window._mobilePrintClose = () => {
+      const m = document.getElementById('mainContent');
+      if(m) m.innerHTML = window._mobilePrintPrev;
+      clearTimeout(window._mobilePrintTimer);
+    };
+    main.innerHTML += `<div style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9999">
+      <button onclick="window._mobilePrintClose()"
+        style="background:#e74c3c;color:white;border:none;border-radius:8px;padding:12px 28px;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.3)">
+        ✕ ปิดหน้าพิมพ์
+      </button>
+    </div>`;
+    window._mobilePrintTimer = setTimeout(() => window._mobilePrintClose(), 30000);
   } else {
     window.print();
     main.innerHTML = prev;
@@ -4189,7 +4216,7 @@ window._setDailyView = (mode) => {
     if(window._selectDay) window._selectDay(window._currentDay||(MOCK_DAILY.slice().sort((a,b)=>b.date.localeCompare(a.date))[0]?.date)||'');
   } else {
     if(dayPicker) dayPicker.style.display='none';
-    if(monthPicker) monthPicker.style.display='none';
+    if(monthPicker) monthPicker.style.display='';  // บัค fix: แสดง month picker ในโหมดรายเดือน
     if(btnMonth){btnMonth.style.background='var(--blue)';btnMonth.style.color='white';}
     if(btnDay){btnDay.style.background='white';btnDay.style.color='var(--ink-2)';}
     // แสดง list เดือนทั้งหมดที่มีข้อมูล
@@ -4800,8 +4827,20 @@ function _exportPrintView(entries, days, dateLabel, codeLabel, locLabel){
   </div>`;
 
   if(_isMobileDevice()){
-    showToast('📱 กรุณาใช้ Share → Print จากเบราว์เซอร์');
-    setTimeout(() => { main.innerHTML = prev; }, 3000);
+    showToast('📱 กรุณาใช้ Share → Print จากเบราว์เซอร์ แล้วกด "ปิด" ด้านล่าง');
+    window._mobilePrintPrev = prev;
+    window._mobilePrintClose = () => {
+      const m = document.getElementById('mainContent');
+      if(m) m.innerHTML = window._mobilePrintPrev;
+      clearTimeout(window._mobilePrintTimer);
+    };
+    main.innerHTML += `<div style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9999">
+      <button onclick="window._mobilePrintClose()"
+        style="background:#e74c3c;color:white;border:none;border-radius:8px;padding:12px 28px;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.3)">
+        ✕ ปิดหน้าพิมพ์
+      </button>
+    </div>`;
+    window._mobilePrintTimer = setTimeout(() => window._mobilePrintClose(), 30000);
   } else {
     window.print();
     main.innerHTML = prev;
@@ -4925,7 +4964,7 @@ function closeQuickAction(){
 let _qaTouchTimer = null;
 function _qaTouch(e, id){
   _qaTouchTimer = setTimeout(() => {
-    showQuickAction(e.touches[0], id);
+    showQuickAction(e, id);
   }, 500);
 }
 function _qaClear(){
