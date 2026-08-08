@@ -793,6 +793,16 @@ const CODE_GROUPS = {
 
 const BADGE_CLASS = {'A':'ba','B':'bb','C':'bc'};
 
+// [FIX-A1] entry/สินค้าบางแถวจากชีตอาจไม่มีฟิลด์ code เลย (undefined)
+// เดิมเขียน s.code[0] ตรง ๆ ทำให้ TypeError แล้วหน้ารายเดือน/รายวันพังทั้งหน้า
+function _bcls(code){
+  const g = (code == null ? '' : String(code))[0];
+  return BADGE_CLASS[g] || 'bc';
+}
+// [FIX-A2] qty ที่มาจากชีตอาจเป็น "ข้อความ" ('10') ถ้าเอาไปบวกตรง ๆ จะกลายเป็นการต่อสตริง
+// เช่น 10 + '5' = '105' ทำให้ยอดรวมผิดแบบมองไม่ออก
+function _num(v){ const n = parseFloat(v); return isNaN(n) ? 0 : n; }
+
 let db = [];
 let currentFilter = 'all';
 let searchQ = '';
@@ -1324,7 +1334,8 @@ function renderListTable(slice){
     let qtyCell = '-', kgCell = '-';
     if(rows.length){
       const nonKg = rows.filter(s=>s.unit!=='กก.'&&s.unit!=='kg');
-      if(nonKg.length) qtyCell = nonKg.map(s=>s.qty.toLocaleString()+' '+s.unit).join(', ');
+      // [FIX-A5] s.unit มาจากชีต ต้อง escape ก่อนยัดเข้า innerHTML
+      if(nonKg.length) qtyCell = nonKg.map(s=>s.qty.toLocaleString()+' '+escHtml(s.unit)).join(', ');
       const totalKg = getTotalKgByNo(r.no);
       if(totalKg>0) kgCell = totalKg.toLocaleString()+' กก.';
       // เตือนเมื่อมีบางหน่วยที่ยังแปลงเป็น กก. ไม่ได้ ดีกว่าโชว์ยอดที่ต่ำกว่าจริงเฉย ๆ
@@ -1412,7 +1423,8 @@ function renderListTable(slice){
     if(cardBox2){ cardBox2.innerHTML = ''; cardBox2.style.display = 'none'; }
     const tbl2 = document.getElementById('listTable');
     if(tbl2){ tbl2.style.display = ''; if(tbl2.parentElement) tbl2.parentElement.style.display = ''; }
-    document.getElementById('listTable').innerHTML =
+    if(!tbl2) return;   // [FIX-A6] กัน TypeError ถ้าผู้ใช้เปลี่ยนหน้าไปก่อนที่ debounce/timeout จะทำงาน
+    tbl2.innerHTML =
       '<thead><tr>' +
       '<th>ภาพ</th>' +
       _sh('code','Code') +
@@ -1428,6 +1440,8 @@ function renderListTable(slice){
 }
 
 function renderListPagination(currentPage, pages, total){
+  const _pg = document.getElementById('listPagination');
+  if(!_pg) return;   // [FIX-A6]
   const maxBtns = 5;
   let startPage = Math.max(1, currentPage - Math.floor(maxBtns/2));
   let endPage = Math.min(pages, startPage + maxBtns - 1);
@@ -1437,7 +1451,7 @@ function renderListPagination(currentPage, pages, total){
     return '<button class="'+(currentPage===p?'active':'')+'" onclick="goPage('+p+')">'+p+'</button>';
   }).join('');
 
-  document.getElementById('listPagination').innerHTML =
+  _pg.innerHTML =
     '<button onclick="goPage(1)" '+(currentPage<=1?'disabled':'')+'>«</button>' +
     '<button onclick="goPage('+(currentPage-1)+')" '+(currentPage<=1?'disabled':'')+'>‹</button>' +
     (startPage > 1 ? '<span style="font-size:12px;color:#aaa;padding:0 4px">...</span>' : '') +
@@ -2166,6 +2180,15 @@ function getWeightPerUnit(no){
   return isNaN(w) ? null : w;
 }
 
+// [FIX-A4] น้ำหนักต่อหน่วยที่ "ใช้จริง" ในการคำนวณของแถวนั้น (ใช้โชว์ในตารางประวัติ)
+function _rowWpu(e){
+  if(e.kgPerUnit && parseFloat(e.kgPerUnit) > 0) return parseFloat(e.kgPerUnit);
+  if(e.unit === 'bigbag' || e.unit === 'ตัน' || e.unit === 'ton') return 1000;
+  if(e.unit === 'กก.' || e.unit === 'kg') return null;   // 1 กก. ต่อ กก. ไม่ต้องโชว์
+  if(e.unit === 'กระสอบ' || e.unit === 'bag') return getWeightPerUnit(e.no);
+  return null;
+}
+
 // แปลง unit เป็น กก. ถ้าทำได้
 function r2(n){ return parseFloat(parseFloat(n).toFixed(2)); }
 
@@ -2218,6 +2241,10 @@ function formatQty(qty, unit, no, overrideWpu){
 // ===== หน้าอัปเดตสต็อก =====
 function renderStockEdit(container){
   window._seStocks = {};
+  // [FIX-A10] เดิมล้างเฉพาะช่องกรอก แต่รูปที่แนบค้างไว้ยังอยู่ใน window._seImgs
+  // ออกจากหน้านี้แล้วกลับเข้ามาใหม่ รูปเก่าจะถูกแนบไปกับการบันทึกครั้งถัดไป
+  window._seImgs = {};
+  window._seMode = {};
   db.forEach(r => {
     // ช่องกรอกว่างเสมอ ไม่ดึงค่าเดิมมาใส่
     window._seStocks[r.id] = [{location:'', loc:'', qty:'', unit:''}];
@@ -2237,7 +2264,7 @@ function renderStockEdit(container){
     <div id="secard_${r.id}" style="background:white;border-radius:8px;padding:14px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,.08)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
         <div>
-          <span class="badge ${r.code[0]==='A'?'ba':r.code[0]==='B'?'bb':'bc'}" style="margin-right:6px">${escHtml(r.code)}</span>
+          <span class="badge ${_bcls(r.code)}" style="margin-right:6px">${escHtml(r.code)}</span>
           <span style="font-weight:600;font-size:13px">${escHtml(r.desc)||escHtml(r.no)}</span>
           <span style="color:#888;font-size:12px;margin-left:6px">(${escHtml(r.no)})</span>
           ${hasStock ? `<span style="font-size:11px;color:#2874a6;margin-left:8px">สต็อกเดิม: ${escHtml(currentStocks.map(s=>s.qty.toLocaleString()+' '+s.unit).join(', '))}</span>` : ''}
@@ -2562,6 +2589,41 @@ function _renderSERows(itemId){
 
 if(!window._seSaving) window._seSaving = {};
 
+// ===== [FIX-A12] กันข้อมูลของเพื่อนร่วมงานหายเวลาบันทึกวันเดียวกัน =====
+// action saveDaily ของ Apps Script คือ "เขียนทับข้อมูลทั้งวัน" ด้วย entries ที่เครื่องเราถืออยู่
+// ถ้าคนที่ 1 เปิดแอปไว้ตั้งแต่เช้า แล้วคนที่ 2 บันทึกตอนสาย พอคนที่ 1 กดบันทึกตอนบ่าย
+// ข้อมูลของคนที่ 2 จะถูกทับหายไปทั้งหมด (ปัญหาใหญ่สุดของระบบนี้เมื่อใช้กันหลายคน)
+// ทางแก้: ก่อนส่ง ให้ดึงข้อมูลวันนั้นจากชีตมาเทียบ แล้วเติมแถวที่เครื่องเรายังไม่มีกลับเข้าไปก่อน
+function _entrySig(e){
+  return [e.no||'', normLoc(e.location||''), e.storage||'', String(e.qty),
+          e.unit||'', String(e.kgPerUnit||''), e.note||''].join('|');
+}
+async function _mergeServerDay(day){
+  if(!day || !navigator.onLine) return 0;
+  try {
+    const res = await fetchTO(GS_URL + '?action=getDaily&token=' + API_TOKEN, {}, 12000);
+    const j = await res.json();
+    if(!j || !j.ok || !Array.isArray(j.data)) return 0;
+    const srv = j.data.filter(d => d && d.date && Array.isArray(d.entries))
+                      .find(d => normDateStr(d.date) === day.date);
+    if(!srv) return 0;
+    const localCount = {};
+    (day.entries||[]).forEach(e => { const k = _entrySig(e); localCount[k] = (localCount[k]||0) + 1; });
+    const add = [];
+    srv.entries.forEach(e => {
+      if(!e) return;
+      const k = _entrySig(e);
+      if(localCount[k] > 0){ localCount[k]--; return; }
+      add.push(Object.assign({}, e, {location: normLoc(e.location||'')}));
+    });
+    if(add.length){
+      day.entries.unshift(...add);
+      _clearStockCache(); _clearDailyIndex();
+    }
+    return add.length;
+  } catch(err){ return 0; }
+}
+
 async function saveStockItem(itemId, btnEl){
   const r = db.find(x => x.id === itemId);
   if(!r) return;
@@ -2624,6 +2686,10 @@ async function saveStockItem(itemId, btnEl){
       MOCK_DAILY.push(todayRecord);
       _clearDailyIndex();
     }
+
+    // [FIX-A12] ดึงของวันนี้จากชีตมารวมก่อน กันทับข้อมูลที่คนอื่นเพิ่งบันทึกไป
+    const _merged = await _mergeServerDay(todayRecord);
+    if(_merged) showToast('ℹ️ พบข้อมูลใหม่จากเพื่อนร่วมงาน ' + _merged + ' แถว — รวมให้แล้ว');
 
     if(mode === 'replace'){
       // [Fix 1.2] เดิมลบเฉพาะ entry ของ "วันนี้" แต่ยอดสต็อกคำนวณจากการบวกสะสม "ทุกวัน"
@@ -2998,7 +3064,7 @@ function renderDaily(container){
     filteredEntries.forEach(e => {
       const key = e.no + '||' + e.unit;
       if(!summary[key]) summary[key] = {no:e.no, desc:e.desc, code:e.code, unit:e.unit, total:0, rows:[]};
-      summary[key].total = r2(summary[key].total + e.qty);
+      summary[key].total = r2(summary[key].total + _num(e.qty));   // [FIX-A2]
       summary[key].rows.push(e);
     });
 
@@ -3046,7 +3112,7 @@ function renderDaily(container){
       <div data-no="${s.no}" data-desc="${escHtml(s.desc)}" style="background:white;border-radius:8px;padding:14px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,.06)">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
           <div>
-            <span class="badge ${s.code[0]==='A'?'ba':s.code[0]==='B'?'bb':'bc'}" style="margin-right:6px">${s.code}</span>
+            <span class="badge ${_bcls(s.code)}" style="margin-right:6px">${escHtml(s.code)}</span>
             <span style="font-weight:600;font-size:13px">${escHtml(s.desc)}</span>
             <span style="color:#888;font-size:11px;margin-left:6px">${escHtml(s.no)}</span>
           </div>
@@ -3093,8 +3159,9 @@ function renderDaily(container){
             ${s.rows.map(r=>{
               const ei = r._idx;
               const rowKg = convertToKg(r.qty, r.unit, r.no, r.kgPerUnit);
-              const rowWpu = (r.kgPerUnit && parseFloat(r.kgPerUnit) > 0) ? parseFloat(r.kgPerUnit)
-                : (r.unit === 'bigbag' ? 1000 : (r.unit === 'ตัน' ? 1000 : getWeightPerUnit(r.no)));
+              // [FIX-A4] เดิมถ้าหน่วยเป็น ถัง/เบาท์ (แปลงเป็น กก. ไม่ได้) ยังไปหยิบ นน./หน่วย ของสินค้ามาโชว์
+              // ทำให้คอลัมน์ "นน./หน่วย" ขึ้น 50 กก. แต่คอลัมน์ "รวม (กก.)" ขึ้น "-" ซึ่งขัดกันเอง
+              const rowWpu = rowKg === null ? null : _rowWpu(r);
               return `
             <tr style="border-bottom:1px solid #f5f5f5">
               <td style="padding:4px 10px">${escHtml(r.location)||'-'}</td>
@@ -3125,8 +3192,7 @@ function renderDaily(container){
           ${s.rows.map(r=>{
             const ei = r._idx;
             const rowKg = convertToKg(r.qty, r.unit, r.no, r.kgPerUnit);
-            const rowWpu = (r.kgPerUnit && parseFloat(r.kgPerUnit) > 0) ? parseFloat(r.kgPerUnit)
-              : (r.unit === 'bigbag' ? 1000 : (r.unit === 'ตัน' ? 1000 : getWeightPerUnit(r.no)));
+            const rowWpu = rowKg === null ? null : _rowWpu(r);   // [FIX-A4]
             const photos = r.images && r.images.length ? r.images : (r.image ? [r.image] : []);
             return `
             <div class="se-hist-card">
@@ -3679,10 +3745,10 @@ async function deleteDailyEntry(date, entryIdx){
     showToast('⚠️ ลบในเครื่องแล้ว แต่ยังไม่ขึ้น Sheet: ' + e.message + ' — ระบบจะลองส่งใหม่ให้เอง', 'error');
   } finally {
     _dailyMutating = false;
+    // [FIX-A8] เดิมมี _saveDailyData()+_redrawDaily() ซ้ำอีกรอบนอก try
+    // ทำให้หน้าถูกวาดสองครั้ง (กระพริบ) และปุ่ม Undo ในกล่องข้อความหายไป
+    _redrawDaily(date);
   }
-
-  _saveDailyData();
-  _redrawDaily(date);
 }
 
 function editDailyEntry(date, entryIdx){
@@ -3849,6 +3915,11 @@ function removeEditEntryImg(idx){
 async function saveEditDailyEntry(date, realIdx){
   const day = MOCK_DAILY.find(d=>d.date===date);
   if(!day || realIdx < 0) return;
+  // [FIX-A7] เดิมล็อกนี้มีแค่ตอนลบ ระหว่างรอ sync แก้ไข (นานได้ถึง 25 วิ)
+  // ผู้ใช้ยังกดลบแถวอื่นได้ด้วย index ชุดเก่า → ลบผิดแถว
+  if(_dailyMutating){ showToast('กำลังบันทึกรายการก่อนหน้าอยู่ กรุณารอสักครู่'); return; }
+  _dailyMutating = true;
+  try {
 
   const saveBtn = document.querySelector('.modal-footer .btn-primary');
   if(saveBtn){ saveBtn.disabled = true; saveBtn.textContent = 'กำลังบันทึก...'; }
@@ -3928,6 +3999,7 @@ async function saveEditDailyEntry(date, realIdx){
   window._editEntryKgPerUnit = null;
   closeModal();
   _redrawDaily(date);
+  } finally { _dailyMutating = false; }   // [FIX-A7]
 }
 
 
@@ -4008,14 +4080,14 @@ function exportDailyPDF(mode='all'){
     exportEntries.forEach(e => {
       const key = e.no + '||' + e.unit;
       if(!summary2[key]) summary2[key] = {no:e.no, desc:e.desc, code:e.code, unit:e.unit, total:0, rows:[]};
-      summary2[key].total = r2(summary2[key].total + e.qty);
+      summary2[key].total = r2(summary2[key].total + _num(e.qty));   // [FIX-A2]
       summary2[key].rows.push(e);
     });
 
     const locTotals = {};
     exportEntries.forEach(e => {
       if(!locTotals[e.location]) locTotals[e.location] = {};
-      locTotals[e.location][e.unit] = r2((locTotals[e.location][e.unit]||0) + e.qty);
+      locTotals[e.location][e.unit] = r2((locTotals[e.location][e.unit]||0) + _num(e.qty));   // [FIX-A2]
     });
 
     const summaryByCode = {};
@@ -4130,6 +4202,16 @@ function normDateStr(val){
   if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
   // [BugFix #5] new Date('YYYY-MM-DD') แปลงเป็น UTC midnight → ใน UTC+7 แสดงวันก่อนหน้าช่วง 00:00-07:00
   // แก้โดย parse ด้วย local time แทน
+  // [FIX-A3] ถ้าเป็น ISO ที่มีเวลาและโซน Z ติดมาด้วย (Apps Script ส่ง Date object กลับมา)
+  // การตัดเอา 10 ตัวแรกจะได้ "วันแบบ UTC" ซึ่งในไทย (UTC+7) จะกลายเป็นวันก่อนหน้า
+  // ต้องแปลงเป็นเวลาเครื่องก่อนแล้วค่อยอ่านวัน
+  if(/^\d{4}-\d{2}-\d{2}T/.test(s)){
+    const dt = new Date(s);
+    if(!isNaN(dt.getTime())){
+      const pad0 = n => String(n).padStart(2,'0');
+      return dt.getFullYear() + '-' + pad0(dt.getMonth()+1) + '-' + pad0(dt.getDate());
+    }
+  }
   const isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if(isoMatch){
     return isoMatch[1] + '-' + isoMatch[2] + '-' + isoMatch[3];
@@ -4528,7 +4610,7 @@ window._selectMonth = (ym) => {
     const sm={};
     ne.forEach(e=>{const key=e.no+'|'+e.unit;if(!sm[key])sm[key]={no:e.no,desc:e.desc,code:e.code,unit:e.unit,rows:[]};sm[key].rows.push(e);});
     const cards=Object.values(sm).map(s=>{
-      const bc=s.code[0]==='A'?'ba':s.code[0]==='B'?'bb':'bc';
+      const bc=_bcls(s.code);
       const skg=r2(s.rows.reduce((a,r)=>{const k=convertToKg(r.qty,r.unit,r.no,r.kgPerUnit);return r2(a+(k!==null?k:0));},0));
       const rows=s.rows.map(r=>'<tr style="border-bottom:1px solid #f5f5f5"><td style="padding:4px 10px">'+(escHtml(r.location)||'-')+'</td><td style="padding:4px 10px;color:#777">'+(escHtml(r.storage)||'-')+'</td><td style="padding:4px 10px;text-align:right;font-weight:600;color:#2874a6">'+formatQty(r.qty,r.unit,r.no)+'</td></tr>').join('');
       return '<div style="background:white;border-radius:6px;padding:12px;margin-bottom:6px;border:1px solid #eef2f7">'+
@@ -4596,7 +4678,7 @@ function globalSearch(q){
 
   wrap.innerHTML = '';
   matches.forEach(r => {
-    const bc = r.code[0]==='A' ? 'ba' : r.code[0]==='B' ? 'bb' : 'bc';
+    const bc = _bcls(r.code);
     const div = document.createElement('div');
     div.style.cssText = 'padding:10px 14px;cursor:pointer;border-bottom:1px solid #f5f5f5;display:flex;justify-content:space-between;align-items:center';
     div.innerHTML = '<div><div style="font-size:12px;font-weight:600;color:var(--ink)">' + escHtml(r.desc) + '</div>'
@@ -4910,6 +4992,8 @@ function _updateBreadcrumb(page, extra){
 function showExportDialog(){
   const dialog = document.getElementById('exportDialog');
   if(!dialog) return;
+  // [FIX-A11] ยังไม่มีข้อมูลสักวัน กด Export แล้วจะได้ dropdown ว่างและไฟล์เปล่า
+  if(!MOCK_DAILY.length){ showToast('ยังไม่มีข้อมูลให้ export', 'error'); return; }
 
   // populate วันที่
   const dates = MOCK_DAILY.slice().sort((a,b)=>a.date.localeCompare(b.date));
@@ -5161,7 +5245,10 @@ const _LOGO_SRC = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAkGBw
 
 // ===== Mobile Detection =====
 function _isMobileDevice(){
-  return navigator.maxTouchPoints > 0 || /iPhone|iPad|Android/i.test(navigator.userAgent);
+  // [FIX-A9] เดิมโน้ตบุ๊กจอสัมผัส (maxTouchPoints > 0) ถูกนับเป็นมือถือด้วย
+  // เวลากด Export PDF บนคอมจึงไม่ยิง window.print() แต่ไปโชว์หน้าพิมพ์แบบมือถือแทน
+  if(/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) return true;
+  return navigator.maxTouchPoints > 0 && window.innerWidth <= 1024;
 }
 
 
