@@ -535,8 +535,10 @@ tbody tr:hover {
   .table-wrap { overflow-x: auto; overflow-y: auto; max-height: calc(100vh - 260px); -webkit-overflow-scrolling: touch; border-radius: 6px; }
   table { font-size: 12px; min-width: 520px; }
   td, th { padding: 8px 10px; }
-  table th:nth-child(n+6):nth-child(-n+8),
-  table td:nth-child(n+6):nth-child(-n+8) { display: none; }
+  /* จำกัดเฉพาะตารางรายการวัตถุดิบ — เดิมมีผลกับทุกตาราง ทำให้คอลัมน์ "รวม (กก.)"
+     ของรายงานหายไปเวลาสั่งพิมพ์จากมือถือ */
+  #listTable th:nth-child(n+6):nth-child(-n+8),
+  #listTable td:nth-child(n+6):nth-child(-n+8) { display: none; }
 
   /* Forms */
   .form-row { grid-template-columns: 1fr; gap: 10px; }
@@ -745,7 +747,7 @@ tbody tr:hover {
 //   3. ใช้ Google OAuth แทน static token
 function _d(h){return h.match(/../g).map(b=>String.fromCharCode(parseInt(b,16)^42)).join('');}
 const GS_URL = _d('425e5e5a59100505594958435a5e044d45454d464f0449454705474b495845590559056b614c534948524247501a5860605a1b58647f1d6f491f6b501d476b7f5b7913755d43197f73755f67681b5e7d5c195f7b40136b6f6712604c464360074c44627d5243667a6c1d4b054f524f49');
-const API_TOKEN = _d('797a67756c6f6f6e6763666675181a181e');
+const API_TOKEN = _d('797a67756c6f6f6e6763666675181a181c75417b1d52781e47705c137e5e');
 const IMGBB_KEY = ''; // [BugFix #10] ไม่ได้ใช้งาน — รูปภาพถูกเก็บเป็น base64 ใน Google Sheets โดยตรง
 
 const CODE_MAP = {"A001":"Raw Materials","A002":"Liquid & Oil","A003":"Vitamin & Mineral","A004":"Feed additive","A005":"Medicine","A009":"Production for trial","A020":"Raw Materials for sale - bulk","A021":"Raw Materials for sale - Bag","B101":"Semi - RM","B102":"Wip Premix","B103":"WIP ขนมชั้น","C203":"NC - FG Bulk","C204":"NC - FG bag","C209":"NC สารเสริม"};
@@ -827,7 +829,32 @@ function _setPending(arr){
   _paintPending();
 }
 function _markPending(date){ if(date) _setPending(_getPending().concat([date])); }
-function _clearPending(date){ _setPending(_getPending().filter(d => d !== date)); }
+function _clearPending(date){
+  _setPending(_getPending().filter(d => d !== date));
+  _clearDeletedSigs(date);
+}
+
+// ── รายการแถวที่ผู้ใช้ลบไปแล้วแต่ยังส่งขึ้นชีตไม่สำเร็จ ──
+// ถ้าไม่จำไว้ พอเน็ตกลับมา _mergeServerDay จะไปดึงแถวเดิมบนชีตกลับมาใส่ให้ใหม่
+// กลายเป็น "ลบแล้วแต่ไม่หาย" ตอนออนไลน์อีกครั้ง
+function _getDeletedSigs(){
+  try { const v = JSON.parse(localStorage.getItem('spm_pending_deleted')||'{}'); return (v && typeof v === 'object') ? v : {}; }
+  catch(e){ return {}; }
+}
+function _markDeletedSig(date, sig){
+  if(!date || !sig) return;
+  try {
+    const all = _getDeletedSigs();
+    all[date] = [...new Set((all[date]||[]).concat([sig]))];
+    localStorage.setItem('spm_pending_deleted', JSON.stringify(all));
+  } catch(e){}
+}
+function _clearDeletedSigs(date){
+  try {
+    const all = _getDeletedSigs();
+    if(all[date]){ delete all[date]; localStorage.setItem('spm_pending_deleted', JSON.stringify(all)); }
+  } catch(e){}
+}
 
 function _paintPending(){
   const el = document.getElementById('pendingBadge');
@@ -854,6 +881,12 @@ async function retryPending(silent){
   for(const date of p){
     const day = MOCK_DAILY.find(d => d.date === date);
     try {
+      // [C-1/C-2] ส่งซ้ำ = เขียนทับทั้งวันอีกครั้ง ต้อง merge ของบนชีตก่อนเสมอ
+      if(day){
+        const mg = await _mergeServerDay(day);
+        if(!mg.ok) throw new Error('ตรวจสอบข้อมูลบนชีตไม่ได้');
+        _clearStockCache(); _clearDailyIndex(); _saveDailyData();
+      }
       if(day && day.entries && day.entries.length){
         const res = await fetchTO(GS_URL, {
           method:'POST', headers:{'Content-Type':'text/plain'}, redirect:'follow',
@@ -869,6 +902,7 @@ async function retryPending(silent){
         });
         const j = await res.json();
         if(!j.ok) throw new Error(j.error||'ลบไม่สำเร็จ');
+        if(day){ const _i = MOCK_DAILY.indexOf(day); if(_i >= 0) MOCK_DAILY.splice(_i, 1); _saveDailyData(); }
       }
       _clearPending(date); ok++;
     } catch(e){ fail++; }
@@ -971,7 +1005,12 @@ async function loadFromSheet(){
     updateCounts();
     document.getElementById('hdrCount').textContent = `วัตถุดิบทั้งหมด ${db.length} รายการ`;
   } catch(e) {
-    showToast('❌ โหลดข้อมูลไม่สำเร็จ: ' + e.message, 'error');
+    // ข้อความให้ชัดขึ้น เผื่อกรณีอัปเดตไฟล์หน้าเว็บก่อน Deploy Apps Script ตัวใหม่
+    if(String(e.message||'').indexOf('Unauthorized') >= 0){
+      showToast('❌ Apps Script ปฏิเสธการเชื่อมต่อ (Unauthorized) — กรุณา Deploy โค้ด Apps Script ตัวใหม่ก่อน แล้วเปิดหน้านี้อีกครั้ง', 'error');
+    } else {
+      showToast('❌ โหลดข้อมูลไม่สำเร็จ: ' + e.message, 'error');
+    }
     console.error('loadFromSheet error:', e);
   } finally {
     showLoading(false);
@@ -1068,12 +1107,11 @@ function showPage(page, pushHistory=true){
   _updateBreadcrumb(page);
   document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
   const main = document.getElementById('mainContent');
+  // [C-3] เดิมมี try/catch เฉพาะหน้า dashboard หน้าอื่นถ้าเจอข้อมูลเพี้ยนแถวเดียวจะขาวทั้งหน้า
+  try {
   if(page === 'dashboard'){
     document.querySelectorAll('.sidebar a')[0].classList.add('active');
-    try { renderDashboard(); } catch(e) {
-      document.getElementById('mainContent').innerHTML = 
-        emptyState('⚠️','เกิดข้อผิดพลาด: '+e.message,'กรุณา refresh หน้าใหม่');
-    }
+    renderDashboard();
   } else if(page === 'stockview'){
     document.querySelectorAll('.sidebar a')[1].classList.add('active');
     renderStockView(main);
@@ -1091,6 +1129,11 @@ function showPage(page, pushHistory=true){
     document.querySelectorAll('.sidebar a')[4].classList.add('active');
     renderList();
     main.classList.add('page-enter'); setTimeout(()=>main.classList.remove('page-enter'), 300);
+  }
+  } catch(e) {
+    console.error('showPage(' + page + ') error:', e);
+    if(main) main.innerHTML = emptyState('⚠️','เกิดข้อผิดพลาดในการแสดงผลหน้านี้',
+      'สาเหตุ: ' + e.message + ' — มักเกิดจากข้อมูลบางแถวในชีตไม่สมบูรณ์ (เช่น ช่องจำนวนว่าง) หน้าอื่นยังใช้งานได้ตามปกติ');
   }
 }
 
@@ -1260,7 +1303,7 @@ function renderDashboard(){
         <div style="font-size:10px;opacity:.6;margin-top:2px;text-transform:uppercase;letter-spacing:.5px">รายการทั้งหมด</div>
       </div>
       <div class="kpi-hover" style="background:#1a5276;color:white;border-radius:10px;padding:14px;text-align:center;position:relative">
-        <div style="font-size:22px;font-weight:800">${grandTotalKg > 0 ? (grandTotalKg/1000).toFixed(1)+'K' : '—'}</div>
+        <div style="font-size:22px;font-weight:800">${grandTotalKg > 0 ? (grandTotalKg >= 1000 ? (grandTotalKg/1000).toFixed(1)+'K' : grandTotalKg.toLocaleString()) : '—'}</div>
         <div style="font-size:10px;opacity:.6;margin-top:2px;text-transform:uppercase;letter-spacing:.5px">สต็อกรวม (กก.)</div>
         ${grandTotalKg === 0 ? '<div style="font-size:9px;opacity:.4;margin-top:3px">รอข้อมูล</div>' : ''}
       </div>
@@ -1471,8 +1514,15 @@ function formHTML(r={}){
     {val:'bag', label:'กระสอบ (Bag)'},
     {val:'drum', label:'ถัง (Drum)'},
   ];
-  const pkgOpts = pkgMap.map(p=>`<option value="${p.val}" ${r.pkg===p.val?'selected':''}>${p.label}</option>`).join('');
-  const condOpts = ['','รับน้ำหนักตามใบชั่ง','รับน้ำหนักตามบิล','อื่นๆ'].map(c=>`<option value="${c}" ${escHtml(r.cond)===c?'selected':''}>${c||'- ไม่ระบุ -'}</option>`).join('');
+  // [M-3] ถ้าค่าเดิมจากชีตไม่อยู่ในลิสต์ ต้องเพิ่ม option ให้ก่อน (แบบเดียวกับ _locationOptionsHtml)
+  // ไม่งั้น select จะเด้งไปค่าว่างแล้วทับข้อมูลเดิม — และเมื่อมี option ค่าเดิมแล้ว การเลือก "- ไม่ระบุ -" จึงล้างค่าได้จริง
+  const pkgExtra = (r.pkg && !pkgMap.some(x=>x.val===r.pkg))
+    ? `<option value="${escHtml(r.pkg)}" selected>${escHtml(r.pkg)} (ค่าเดิม)</option>` : '';
+  const pkgOpts = pkgExtra + pkgMap.map(p=>`<option value="${p.val}" ${r.pkg===p.val?'selected':''}>${p.label}</option>`).join('');
+  const condList = ['','รับน้ำหนักตามใบชั่ง','รับน้ำหนักตามบิล','อื่นๆ'];
+  const condExtra = (r.cond && condList.indexOf(r.cond) < 0)
+    ? `<option value="${escHtml(r.cond)}" selected>${escHtml(r.cond)} (ค่าเดิม)</option>` : '';
+  const condOpts = condExtra + condList.map(c=>`<option value="${escHtml(c)}" ${r.cond===c?'selected':''}>${c||'- ไม่ระบุ -'}</option>`).join('');
 
   // รายการ No. ที่มีอยู่แล้วของ code นั้น (ใช้เป็นตัวช่วยเลือก ไม่ได้บังคับ)
   const noOpts = r.code
@@ -1517,7 +1567,7 @@ function formHTML(r={}){
     </div>
     <div class="form-group" id="col2Group" style="display:${['bulk','BULK','drum',''].includes(r.pkg||'')?'none':'flex'}">
       <label>น้ำหนักต่อ 1 หน่วย (กก.) <span style="font-size:11px;color:#e67e22">⚠️ ใช้แปลงหน่วย</span></label>
-      <input id="f_col2" value="${r.col2||''}" placeholder="เช่น 20 = 1 กระสอบ มี 20 กก." type="number" min="0">
+      <input id="f_col2" value="${escHtml(r.col2)}" placeholder="เช่น 20 = 1 กระสอบ มี 20 กก." type="number" min="0">
     </div>
   </div>
   <div class="form-group">
@@ -1539,7 +1589,7 @@ function formHTML(r={}){
         <img id="imgPreview" src="${safeImgSrc(r.image)}" style="max-width:100%;max-height:120px;border-radius:6px;border:1px solid #eee">
         <button type="button" onclick="clearImg('')" style="display:block;margin-top:3px;font-size:11px;color:#c0392b;background:none;border:none;cursor:pointer">✕ ลบรูป</button>
       </div>
-      <input type="hidden" id="f_image" value="${r.image||''}">
+      <input type="hidden" id="f_image" value="${escHtml(r.image)}">
     </div>
     <div class="form-group">
       <label>รูปแบบบรรจุภัณฑ์</label>
@@ -1552,7 +1602,7 @@ function formHTML(r={}){
         <img id="imgPreview2" src="${safeImgSrc(r.image2)}" style="max-width:100%;max-height:120px;border-radius:6px;border:1px solid #eee">
         <button type="button" onclick="clearImg('2')" style="display:block;margin-top:3px;font-size:11px;color:#c0392b;background:none;border:none;cursor:pointer">✕ ลบรูป</button>
       </div>
-      <input type="hidden" id="f_image2" value="${r.image2||''}">
+      <input type="hidden" id="f_image2" value="${escHtml(r.image2)}">
     </div>
   </div>`;
 }
@@ -1782,11 +1832,11 @@ async function saveEdit(id){
       code:    d.code    || r.code,
       no:      newNo,
       desc:    d.desc    || r.desc,
-      // [Fix 2.4] ถ้า dropdown ส่งค่าว่างกลับมา (เพราะค่าเดิมไม่อยู่ในลิสต์ตัวเลือก) ให้คงค่าเดิมไว้
-      // ไม่ใช่เขียนทับข้อมูลในชีตด้วยค่าว่างแบบเงียบ ๆ
-      pkg:     d.pkg  !== '' ? d.pkg  : (r.pkg  || ''),
-      col2:    d.col2 !== '' ? d.col2 : (r.col2 || ''),
-      cond:    d.cond !== '' ? d.cond : (r.cond || ''),
+      // [M-3] formHTML เพิ่ม option "(ค่าเดิม)" ให้ค่าที่ไม่อยู่ในลิสต์แล้ว
+      // ค่าว่างที่ส่งมาจึงแปลว่าผู้ใช้ตั้งใจเลือก "- ไม่ระบุ -" จริง ๆ ต้องล้างค่าได้
+      pkg:     d.pkg,
+      col2:    d.col2,
+      cond:    d.cond,
       loc:     d.loc     || r.loc     || '',   // ฟอร์มไม่มีช่องนี้ -> คงค่าเดิมไว้ ไม่เขียนทับด้วยค่าว่าง
       storage: d.storage || r.storage || '',
       image:   d.image   || '',
@@ -1885,6 +1935,9 @@ async function deleteItem(id){
     const deletedRow = r.row;
     db = db.filter(x=>x.id!==id);
     if(deletedRow) db.forEach(x => { if(x.row && x.row > deletedRow) x.row--; });
+    // [H-7] ถ้าไม่ทราบแถวที่ลบ เลขแถวที่จำไว้ทั้งหมดเชื่อถือไม่ได้แล้ว ต้องล้างทิ้ง
+    // ไม่งั้นการแก้ไขครั้งถัดไปอาจส่ง _row ที่เลื่อนไปแล้วขึ้นชีต
+    else db.forEach(x => { x.row = null; });
     // เก็บประวัติการบันทึกไว้เหมือนเดิม (ไม่ยิงลบทีละวันซึ่งช้ามาก)
     // แต่สินค้าที่ถูกลบจะไม่ถูกนับเป็นสต็อกอีก เพราะทุกหน้าคำนวณจาก db เป็นหลัก
     _clearStockCache();
@@ -1967,14 +2020,14 @@ function showDetail(id){
     </div>` : '';
 
   document.getElementById('modalBox').innerHTML = `
-    <h2>${r.no} — ${escHtml(r.desc)||'(ไม่มีชื่อ)'}</h2>
+    <h2>${escHtml(r.no)} — ${escHtml(r.desc)||'(ไม่มีชื่อ)'}</h2>
     ${(r.image||r.image2)?`<div style="margin-bottom:14px;display:flex;gap:10px;flex-wrap:wrap">
       ${r.image ? `<div><div style="font-size:10px;color:#aaa;margin-bottom:3px">รูปสินค้า</div><img src="${safeImgSrc(r.image)}" style="max-width:150px;max-height:150px;border-radius:8px;border:1px solid #eee"></div>` : ''}
       ${r.image2 ? `<div><div style="font-size:10px;color:#aaa;margin-bottom:3px">รูปแบบบรรจุภัณฑ์</div><img src="${safeImgSrc(r.image2)}" style="max-width:150px;max-height:150px;border-radius:8px;border:1px solid #eee"></div>` : ''}
     </div>`:''}
     <dl class="detail-grid">
       <dt>Code</dt><dd>${getBadge(r.code)} ${CODE_MAP[r.code]||''}</dd>
-      <dt>No.</dt><dd style="font-family:monospace">${r.no||'-'}</dd>
+      <dt>No.</dt><dd style="font-family:monospace">${escHtml(r.no)||'-'}</dd>
       <dt>Description</dt><dd>${escHtml(r.desc)||'-'}</dd>
       <dt>บรรจุ</dt><dd>${escHtml(r.pkg)||'-'} ${r.col2?'('+escHtml(r.col2)+' กก./'+escHtml(r.pkg)+')':''}</dd>
       <dt>เงื่อนไขซื้อขาย</dt><dd>${escHtml(r.cond)||'-'}</dd>
@@ -2217,6 +2270,8 @@ function convertToKg(qty, unit, no, overrideWpu){
 }
 
 function formatQty(qty, unit, no, overrideWpu){
+  // [C-3] qty จากชีตอาจเป็นค่าว่าง/null ทำให้ .toLocaleString() โยน TypeError แล้วหน้าพังทั้งหน้า
+  qty = _num(qty);
   // [Fix 3.1] unit มาจากชีต/ฟอร์ม และผลลัพธ์ของฟังก์ชันนี้ถูกใส่เข้า innerHTML
   const u = escHtml(unit);
   if(unit === 'กก.' || unit === 'kg') return `${qty.toLocaleString()} ${u}`;
@@ -2267,7 +2322,7 @@ function renderStockEdit(container){
           <span class="badge ${_bcls(r.code)}" style="margin-right:6px">${escHtml(r.code)}</span>
           <span style="font-weight:600;font-size:13px">${escHtml(r.desc)||escHtml(r.no)}</span>
           <span style="color:#888;font-size:12px;margin-left:6px">(${escHtml(r.no)})</span>
-          ${hasStock ? `<span style="font-size:11px;color:#2874a6;margin-left:8px">สต็อกเดิม: ${escHtml(currentStocks.map(s=>s.qty.toLocaleString()+' '+s.unit).join(', '))}</span>` : ''}
+          ${hasStock ? `<span style="font-size:11px;color:#2874a6;margin-left:8px">สต็อกเดิม: ${escHtml(currentStocks.map(s=>_num(s.qty).toLocaleString()+' '+s.unit).join(', '))}</span>` : ''}
         </div>
         <div style="display:flex;gap:6px;align-items:center">
           <select id="semode_${r.id}" onchange="window._seMode[${r.id}]=this.value;_seModeHint(${r.id})" style="padding:4px 8px;border:1px solid var(--rule);border-radius:5px;font-size:11px;font-family:inherit;color:var(--ink)">
@@ -2321,7 +2376,7 @@ function renderStockEdit(container){
     const result = renderFiltered(seGroupFilter, q);
     if(!result) {
       window._seShown = [];
-      wrap.innerHTML = emptyState('🔍','ไม่พบสินค้า "'+escHtml(q)+'"','ลองค้นหาด้วยคำอื่น');
+      wrap.innerHTML = emptyState('🔍','ไม่พบสินค้า "'+q+'"','ลองค้นหาด้วยคำอื่น');
       return;
     }
     wrap.innerHTML = result;
@@ -2598,30 +2653,39 @@ function _entrySig(e){
   return [e.no||'', normLoc(e.location||''), e.storage||'', String(e.qty),
           e.unit||'', String(e.kgPerUnit||''), e.note||''].join('|');
 }
+// คืนค่า {ok, added}
+//   ok=true  → ยืนยันสถานะบนชีตได้แล้ว ปลอดภัยที่จะเขียนทับทั้งวัน
+//   ok=false → ตรวจสอบไม่ได้ (ออฟไลน์/หมดเวลา) ห้ามเขียนทับ ให้เก็บเข้าคิวแทน
 async function _mergeServerDay(day){
-  if(!day || !navigator.onLine) return 0;
+  if(!day) return {ok:false, added:0};
+  if(!navigator.onLine) return {ok:false, added:0};
   try {
-    const res = await fetchTO(GS_URL + '?action=getDaily&token=' + API_TOKEN, {}, 12000);
+    // ส่ง &date= ไปด้วย เพื่อให้ Apps Script รุ่นใหม่คืนเฉพาะวันเดียว (รุ่นเก่าจะเมินพารามิเตอร์นี้เอง)
+    const res = await fetchTO(GS_URL + '?action=getDaily&token=' + API_TOKEN + '&date=' + encodeURIComponent(day.date), {}, 12000);
     const j = await res.json();
-    if(!j || !j.ok || !Array.isArray(j.data)) return 0;
+    if(!j || !j.ok || !Array.isArray(j.data)) return {ok:false, added:0};
     const srv = j.data.filter(d => d && d.date && Array.isArray(d.entries))
                       .find(d => normDateStr(d.date) === day.date);
-    if(!srv) return 0;
+    if(!srv) return {ok:true, added:0};
     const localCount = {};
     (day.entries||[]).forEach(e => { const k = _entrySig(e); localCount[k] = (localCount[k]||0) + 1; });
+    // แถวที่ผู้ใช้ลบไปแล้ว (แต่ยังส่งขึ้นชีตไม่สำเร็จ) ต้องไม่ถูกดึงกลับมา
+    const delSigs = (_getDeletedSigs()[day.date] || []).slice();
     const add = [];
     srv.entries.forEach(e => {
       if(!e) return;
       const k = _entrySig(e);
       if(localCount[k] > 0){ localCount[k]--; return; }
+      const di = delSigs.indexOf(k);
+      if(di >= 0){ delSigs.splice(di, 1); return; }
       add.push(Object.assign({}, e, {location: normLoc(e.location||'')}));
     });
     if(add.length){
       day.entries.unshift(...add);
       _clearStockCache(); _clearDailyIndex();
     }
-    return add.length;
-  } catch(err){ return 0; }
+    return {ok:true, added:add.length};
+  } catch(err){ return {ok:false, added:0}; }
 }
 
 async function saveStockItem(itemId, btnEl){
@@ -2654,6 +2718,8 @@ async function saveStockItem(itemId, btnEl){
       if(isNaN(qty) || qty <= 0){ showToast('จำนวนต้องเป็นตัวเลขที่มากกว่า 0', 'error'); return; }
       if(qty > 999999){ showToast('จำนวนดูเหมือนผิดปกติ (' + qty.toLocaleString() + ') กรุณาตรวจสอบ', 'error'); return; }
       if(!s.unit || !s.unit.trim()){ showToast('กรุณาเลือกหน่วย', 'error'); return; }
+      // [H-5] เดิมบันทึกได้โดยไม่เลือก Location แล้วแถวนั้นจะไม่ขึ้นในตัวกรอง Location เลย
+      if(!s.location || !s.location.trim()){ showToast('กรุณาเลือก Location', 'error'); return; }
       if(s.unit === 'กระสอบ' && (!s.kgPerUnit || parseFloat(s.kgPerUnit) <= 0)){
         showToast('กรุณากรอกน้ำหนักต่อกระสอบ (กก./กระสอบ)', 'error');
         return;
@@ -2689,7 +2755,7 @@ async function saveStockItem(itemId, btnEl){
 
     // [FIX-A12] ดึงของวันนี้จากชีตมารวมก่อน กันทับข้อมูลที่คนอื่นเพิ่งบันทึกไป
     const _merged = await _mergeServerDay(todayRecord);
-    if(_merged) showToast('ℹ️ พบข้อมูลใหม่จากเพื่อนร่วมงาน ' + _merged + ' แถว — รวมให้แล้ว');
+    if(_merged.added) showToast('ℹ️ พบข้อมูลใหม่จากเพื่อนร่วมงาน ' + _merged.added + ' แถว — รวมให้แล้ว');
 
     if(mode === 'replace'){
       // [Fix 1.2] เดิมลบเฉพาะ entry ของ "วันนี้" แต่ยอดสต็อกคำนวณจากการบวกสะสม "ทุกวัน"
@@ -2717,6 +2783,11 @@ async function saveStockItem(itemId, btnEl){
 
     // ส่งไป Google Sheet ก่อน — ปุ่มยัง disabled อยู่ตลอดช่วงรอนี้ ไม่รีเซ็ตก่อนเวลา
     let syncOk = true, syncErrMsg = '';
+    // [C-2] ถ้า _mergeServerDay ยืนยันสถานะบนชีตไม่ได้ ห้ามส่ง saveDaily (จะทับข้อมูลคนอื่น)
+    if(!_merged.ok){
+      syncOk = false;
+      syncErrMsg = 'ตรวจสอบข้อมูลบนชีตไม่ได้ในตอนนี้';
+    } else {
     try {
       const payload = {
         action: 'saveDaily',
@@ -2736,6 +2807,7 @@ async function saveStockItem(itemId, btnEl){
       if(!json.ok) throw new Error(json.error || 'ส่งข้อมูลไม่สำเร็จ');
     } catch(e) {
       syncOk = false; syncErrMsg = e.message;
+    }
     }
     if(syncOk) _clearPending(dateStr); else _markPending(dateStr);
 
@@ -2781,7 +2853,11 @@ async function saveStockItem(itemId, btnEl){
         const inp2 = document.getElementById('searchInput');
         onSearchInput(inp2 ? inp2.value : '');
       }
+      // [M-7] ตัวที่ scroll จริงคือ .main ไม่ใช่ #mainContent
       if(mc) mc.scrollTop = 0;
+      const _mainScroller = document.querySelector('.main');
+      if(_mainScroller) _mainScroller.scrollTop = 0;
+      if(window.innerWidth <= 768) window.scrollTo({top:0, behavior:'smooth'});
     }, 100);
   } finally {
     window._seSaving[itemId] = false;
@@ -2991,6 +3067,20 @@ function _fixMobileTableToggle(){ _applyMobileFixes(); }
 window.addEventListener('resize', _applyMobileFixes);
 window.addEventListener('orientationchange', _applyMobileFixes);
 
+// [H-6] renderListTable อ่านความกว้างจอแค่ตอน render ครั้งนั้น พอย่อ/ขยายจอ (หรือหมุนแท็บเล็ต)
+// หน้ารายการวัตถุดิบจะค้างอยู่ในโหมดเดิม ต้องวาดใหม่เมื่อข้ามเส้น 768px
+let _lastIsMobileView = window.innerWidth <= 768;
+const _reRenderListOnBreakpoint = _debounce(() => {
+  const m = window.innerWidth <= 768;
+  if(m === _lastIsMobileView) return;
+  _lastIsMobileView = m;
+  if(document.getElementById('listTable')){
+    try { renderList(); } catch(e){ console.error('renderList on resize:', e); }
+  }
+}, 200);
+window.addEventListener('resize', _reRenderListOnBreakpoint);
+window.addEventListener('orientationchange', _reRenderListOnBreakpoint);
+
 // คอยเช็คซ้ำอัตโนมัติทุกครั้งที่มีการเปลี่ยนแปลงเนื้อหาในหน้า (กันกรณีเรียก render จากจุดที่ลืมเรียกฟังก์ชันนี้)
 // [Fix L-1] ลบ _debounceEarly ออก — ใช้ _debounce (function declaration ท้ายไฟล์ = hoisted) แทนได้เลย
 // function declaration ถูก hoist ขึ้นมาก่อน execute ทุก statement จึงใช้ได้ก่อนประกาศในไฟล์
@@ -3098,7 +3188,7 @@ function renderDaily(container){
       </div>` : '';
 
     const locBtns = locations.map(loc => `
-      <button onclick="window._selectLoc('${escJs(loc)}', '${escJs(date)}')" id="locbtn_${loc.replace(/ /g,'_')}"
+      <button onclick="window._selectLoc('${escJs(loc)}', '${escJs(date)}')" id="locbtn_${escHtml(loc.replace(/ /g,'_'))}"
         style="padding:4px 12px;border-radius:20px;border:1px solid ${loc===selectedLocation?'#1a5276':'#d5d8dc'};
         background:${loc===selectedLocation?'#1a5276':'white'};color:${loc===selectedLocation?'white':'#555'};
         cursor:pointer;font-size:12px;white-space:nowrap">
@@ -3109,7 +3199,7 @@ function renderDaily(container){
     const cards = Object.values(summary).length === 0
       ? emptyState('📊','ไม่พบข้อมูลเปรียบเทียบ','ยังไม่มีข้อมูลในวันที่เลือก')
       : Object.values(summary).map(s => `
-      <div data-no="${s.no}" data-desc="${escHtml(s.desc)}" style="background:white;border-radius:8px;padding:14px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+      <div data-no="${escHtml(s.no)}" data-desc="${escHtml(s.desc)}" style="background:white;border-radius:8px;padding:14px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,.06)">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
           <div>
             <span class="badge ${_bcls(s.code)}" style="margin-right:6px">${escHtml(s.code)}</span>
@@ -3166,7 +3256,7 @@ function renderDaily(container){
             <tr style="border-bottom:1px solid #f5f5f5">
               <td style="padding:4px 10px">${escHtml(r.location)||'-'}</td>
               <td style="padding:4px 10px;color:#777">${escHtml(r.storage)||'-'}</td>
-              <td style="padding:4px 10px;text-align:right;font-weight:600;color:#2874a6">${r.qty.toLocaleString()} ${escHtml(r.unit)||''}</td>
+              <td style="padding:4px 10px;text-align:right;font-weight:600;color:#2874a6">${_num(r.qty).toLocaleString()} ${escHtml(r.unit)||''}</td>
               <td style="padding:4px 10px;text-align:right;color:#777">${rowWpu ? rowWpu.toLocaleString()+' กก.' : '-'}</td>
               <td style="padding:4px 10px;text-align:right;font-weight:700;color:#1a5276">${rowKg!==null ? rowKg.toLocaleString()+' กก.' : '-'}</td>
               <td style="padding:4px 10px;color:#888;font-size:11px">${escHtml(r.note)||'-'}</td>
@@ -3198,7 +3288,7 @@ function renderDaily(container){
             <div class="se-hist-card">
               <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:6px">
                 <div style="font-size:13px;font-weight:600;color:var(--ink)">📍 ${escHtml(r.location)||'-'}</div>
-                <div style="font-size:13px;font-weight:700;color:#2874a6;white-space:nowrap">${r.qty.toLocaleString()} ${escHtml(r.unit)||''}</div>
+                <div style="font-size:13px;font-weight:700;color:#2874a6;white-space:nowrap">${_num(r.qty).toLocaleString()} ${escHtml(r.unit)||''}</div>
               </div>
               <div style="font-size:11px;color:#888;margin-bottom:6px">สถานที่: ${escHtml(r.storage)||'-'}</div>
               <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px;padding:6px 0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)">
@@ -3645,13 +3735,17 @@ async function undoDelete(){
     MOCK_DAILY.sort((a,b) => a.date.localeCompare(b.date));
   }
 
-  day.entries.push(last.data);
+  // [C-2] merge ก่อน ไม่งั้น undo จะเขียนทับแถวที่เพื่อนร่วมงานเพิ่งเพิ่ม
+  const _mg = await _mergeServerDay(day);
+  // ถ้าแถวนี้ยังอยู่บนชีต (ตอนลบ sync ไม่สำเร็จ) merge จะดึงกลับมาแล้ว ไม่ต้อง push ซ้ำ
+  if(!day.entries.some(e => _entrySig(e) === _entrySig(last.data))) day.entries.push(last.data);
   _clearStockCache();
   _clearDailyIndex();
   _saveDailyData();
 
   // sync กลับ Google Sheet
   try {
+    if(!_mg.ok) throw new Error('ตรวจสอบข้อมูลบนชีตไม่ได้ในตอนนี้');
     const payload = {
       action: 'saveDaily', token: API_TOKEN,
       date: day.date, date_th: day.date_th,
@@ -3688,16 +3782,26 @@ async function deleteDailyEntry(date, entryIdx){
   // ใช้ entryIdx ตรงๆ ที่ doRender ส่งมาให้แล้ว (index ใน day.entries จริงๆ)
   if(entryIdx < 0 || entryIdx >= day.entries.length) return;
   _dailyMutating = true;
-  const deleted = day.entries.splice(entryIdx, 1)[0];
+
+  // [C-1] saveDaily/deleteDailyDate = "เขียนทับทั้งวัน" ต้องดึงของบนชีตมารวมก่อนเสมอ
+  //       ไม่งั้นแถวที่เพื่อนร่วมงานเพิ่งบันทึกจะถูกลบหายไปด้วย
+  //       ต้องจำ "ตัว entry" ไว้ก่อน merge เพราะ merge จะ unshift ทำให้ index เลื่อน
+  const _target = day.entries[entryIdx];
+  showToast('⏳ กำลังตรวจสอบข้อมูลบนชีตก่อนลบ...');
+  const _mg = await _mergeServerDay(day);
+  let _idx = day.entries.indexOf(_target);
+  if(_idx < 0) _idx = entryIdx;
+  if(_idx < 0 || _idx >= day.entries.length){ _dailyMutating = false; return; }
+  const deleted = day.entries.splice(_idx, 1)[0];
   // [Fix 2.22] เก็บ meta ของวันไว้ด้วย ไม่งั้น undo จะได้วันที่แบบ ISO และชื่อผู้บันทึกของคนที่กด undo
   pushUndo('delete', deleted, date, {date_th: day.date_th, recorded_by: day.recorded_by});
 
   // [Fix 2.9] ล้าง cache และบันทึกลงเครื่องทันที ไม่รอ network
   // เดิมทำหลัง await ทำให้หน้าอื่นอ่านยอดเก่าค้างได้นานถึง 25 วินาที
+  // [C-1] เอาวันออกจาก MOCK_DAILY ได้ต่อเมื่อ "ยืนยันสถานะบนชีตแล้ว" ว่าไม่เหลืออะไรจริง
+  //       ถ้ายืนยันไม่ได้ (ออฟไลน์) ให้เก็บวันเปล่าไว้ก่อน แล้วให้ retryPending จัดการทีหลัง
   const _wasEmpty = day.entries.length === 0;
-  if(_wasEmpty){
-    // [Fix 2.11] เอาวันออกจาก MOCK_DAILY ทันที ไม่รอผล network
-    // เดิมทำหลัง await ตอนออฟไลน์จึงค้างเป็นวันที่ entries ว่าง แล้วถูกดึงข้อมูลเก่ากลับมาทับ
+  if(_wasEmpty && _mg.ok){
     const _i = MOCK_DAILY.indexOf(day);
     if(_i >= 0) MOCK_DAILY.splice(_i, 1);
   }
@@ -3709,6 +3813,8 @@ async function deleteDailyEntry(date, entryIdx){
 
   // sync ไป Google Sheet — ส่ง entries ที่เหลือของวันนั้นไปเขียนทับใหม่
   try {
+    // [C-1] ยืนยันสถานะบนชีตไม่ได้ = ห้ามเขียนทับ/ลบทั้งวัน ให้เข้าคิวไว้ส่งทีหลัง
+    if(!_mg.ok) throw new Error('ตรวจสอบข้อมูลบนชีตไม่ได้ในตอนนี้');
     if(day.entries.length > 0){
       const payload = {
         action: 'saveDaily', token: API_TOKEN,
@@ -3742,6 +3848,7 @@ async function deleteDailyEntry(date, entryIdx){
     showUndoToast('delete', deleted, date, '✅ ลบรายการเรียบร้อย');
   } catch(e) {
     _markPending(day.date);
+    _markDeletedSig(day.date, _entrySig(deleted));   // กันแถวนี้ถูก merge ดึงกลับมาตอนเน็ตกลับ
     showToast('⚠️ ลบในเครื่องแล้ว แต่ยังไม่ขึ้น Sheet: ' + e.message + ' — ระบบจะลองส่งใหม่ให้เอง', 'error');
   } finally {
     _dailyMutating = false;
@@ -3955,6 +4062,19 @@ async function saveEditDailyEntry(date, realIdx){
     window._editEntryKgPerUnit = '1000';
   }
 
+  // [C-2] merge ของบนชีตก่อน แล้วค่อยหา index ใหม่ของ entry เดิม (merge ทำให้ index เลื่อน)
+  const _target = day.entries[realIdx];
+  const _mg = await _mergeServerDay(day);
+  let _idx = day.entries.indexOf(_target);
+  if(_idx < 0) _idx = realIdx;
+  if(_idx < 0 || _idx >= day.entries.length){
+    showToast('ไม่พบรายการที่จะแก้ไข (อาจถูกลบไปแล้ว)', 'error');
+    if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'บันทึก'; }
+    if(loader) loader.style.display = 'none';
+    return;
+  }
+  realIdx = _idx;
+
   day.entries[realIdx] = {
     ...day.entries[realIdx],
     location: document.getElementById('edit_loc').value.trim(),
@@ -3973,6 +4093,8 @@ async function saveEditDailyEntry(date, realIdx){
 
   // sync ไป Google Sheet — เขียนทับข้อมูลของวันนั้นทั้งหมดใหม่ (เดิมฟังก์ชันนี้ไม่เคย sync เลย)
   try {
+    // [C-2] ยืนยันสถานะบนชีตไม่ได้ = ห้ามเขียนทับทั้งวัน ให้เข้าคิวไว้ส่งทีหลัง
+    if(!_mg.ok) throw new Error('ตรวจสอบข้อมูลบนชีตไม่ได้ในตอนนี้');
     const payload = {
       action: 'saveDaily', token: API_TOKEN,
       date: day.date, date_th: day.date_th,
@@ -4104,7 +4226,7 @@ function exportDailyPDF(mode='all'){
           <td style="padding:6px 10px;border:1px solid #ccc;font-size:11px;font-weight:600">${escHtml(s.desc)}</td>
           <td style="padding:6px 10px;border:1px solid #ccc;font-size:11px">รวมทุกสถานที่</td>
           <td style="padding:6px 10px;border:1px solid #ccc;text-align:right;font-weight:700;color:#1a5276;font-size:11px">
-            ${s.total.toLocaleString()} ${s.unit}${(()=>{if(s.unit==='กก.'||s.unit==='kg')return '';const kg=convertToKg(s.total,s.unit,s.no,s.kgPerUnit);return kg?' ('+kg.toLocaleString()+' กก.)':''})()}
+            ${_num(s.total).toLocaleString()} ${s.unit}${(()=>{if(s.unit==='กก.'||s.unit==='kg')return '';const kg=convertToKg(s.total,s.unit,s.no,s.kgPerUnit);return kg?' ('+kg.toLocaleString()+' กก.)':''})()}
           </td>
         </tr>`,
         ...s.rows.map(row => `
@@ -4113,7 +4235,7 @@ function exportDailyPDF(mode='all'){
           <td style="padding:5px 10px;border:1px solid #ddd;color:#555;font-size:10px;padding-left:20px">↳ ${escHtml(row.location||'-')} / ${escHtml(row.storage||'-')}</td>
           <td style="padding:5px 10px;border:1px solid #ddd;font-size:10px"></td>
           <td style="padding:5px 10px;border:1px solid #ddd;text-align:right;color:#2874a6;font-weight:600;font-size:10px">
-            ${row.qty.toLocaleString()} ${row.unit}${(()=>{if(row.unit==='กก.'||row.unit==='kg')return '';const kg=convertToKg(row.qty,row.unit,row.no,row.kgPerUnit);return kg?' ('+kg.toLocaleString()+' กก.)':''})()}
+            ${_num(row.qty).toLocaleString()} ${row.unit}${(()=>{if(row.unit==='กก.'||row.unit==='kg')return '';const kg=convertToKg(row.qty,row.unit,row.no,row.kgPerUnit);return kg?' ('+kg.toLocaleString()+' กก.)':''})()}
           </td>
         </tr>`)
       ]).join('');
@@ -4155,7 +4277,7 @@ function exportDailyPDF(mode='all'){
           <tbody>
             ${Object.entries(locTotalsKg).map(([loc, kg]) => `
             <tr style="border-bottom:1px solid #eee">
-              <td style="padding:6px 10px;font-weight:600">📦 ${loc}</td>
+              <td style="padding:6px 10px;font-weight:600">📦 ${escHtml(loc)}</td>
               <td style="padding:6px 10px;text-align:right;font-weight:700;color:#2874a6">${kg.toLocaleString()} กก.</td>
             </tr>`).join('')}
             <tr style="background:#eaf4fb;font-weight:700">
@@ -4495,7 +4617,7 @@ window._filterDailySearch = _debounce((q) => {
     });
   });
   if(!results.length){
-    content.innerHTML = emptyState('🔍','ไม่พบ "'+escHtml(q)+'"','ลองค้นหา No. หรือชื่อสินค้าอื่น');
+    content.innerHTML = emptyState('🔍','ไม่พบ "'+q+'"','ลองค้นหา No. หรือชื่อสินค้าอื่น');
     return;
   }
   const byDay = {};
@@ -4999,8 +5121,8 @@ function showExportDialog(){
   const dates = MOCK_DAILY.slice().sort((a,b)=>a.date.localeCompare(b.date));
   const fromSel = document.getElementById('expDateFrom');
   const toSel = document.getElementById('expDateTo');
-  fromSel.innerHTML = dates.map(d=>`<option value="${d.date}">${d.date_th}</option>`).join('');
-  toSel.innerHTML = dates.map(d=>`<option value="${d.date}">${d.date_th}</option>`).join('');
+  fromSel.innerHTML = dates.map(d=>`<option value="${escHtml(d.date)}">${escHtml(d.date_th)}</option>`).join('');
+  toSel.innerHTML = dates.map(d=>`<option value="${escHtml(d.date)}">${escHtml(d.date_th)}</option>`).join('');
   toSel.selectedIndex = dates.length - 1; // default ถึงวันล่าสุด
 
   // populate locations
@@ -5008,7 +5130,7 @@ function showExportDialog(){
   MOCK_DAILY.forEach(d => d.entries.forEach(e => { if(e.location) locs.add(normLoc(e.location)); }));
   const locSel = document.getElementById('expLoc');
   locSel.innerHTML = '<option value="all">ทุก Location</option>'
-    + [...locs].sort().map(l=>`<option value="${l}">${l}</option>`).join('');
+    + [...locs].sort().map(l=>`<option value="${escHtml(l)}">${escHtml(l)}</option>`).join('');
 
   // set default ตาม current state
   if(window._currentDay){
@@ -5124,7 +5246,7 @@ function _exportPrintView(entries, days, dateLabel, codeLabel, locLabel){
         <td style="padding:6px 10px;border:1px solid #ddd;font-size:11px">${escHtml(e.desc)}</td>
         <td style="padding:6px 10px;border:1px solid #ddd;font-size:11px">${escHtml(e.code)}</td>
         <td style="padding:6px 10px;border:1px solid #ddd;font-size:11px">${escHtml(normLoc(e.location||''))}</td>
-        <td style="padding:6px 10px;border:1px solid #ddd;font-size:11px;text-align:right">${e.qty.toLocaleString()} ${escHtml(e.unit)}</td>
+        <td style="padding:6px 10px;border:1px solid #ddd;font-size:11px;text-align:right">${_num(e.qty).toLocaleString()} ${escHtml(e.unit)}</td>
         <td style="padding:6px 10px;border:1px solid #ddd;font-size:11px;text-align:right">${kg!==null?kg.toLocaleString()+' กก.':'-'}</td>
       </tr>`;
     }).join('');
@@ -5207,7 +5329,7 @@ function _printHeader(title, subtitle, extra){
 function _printFooter(total, printDate, printedBy){
   return `<div style="margin-top:20px;padding-top:10px;border-top:1px solid #ccc;display:flex;justify-content:space-between;font-size:10px;color:#888">
     <span>รวมทั้งหมด ${total} รายการ</span>
-    <span>พิมพ์วันที่ ${printDate} โดย ${printedBy||'-'}</span>
+    <span>พิมพ์วันที่ ${printDate} โดย ${escHtml(printedBy)||'-'}</span>
   </div>
   <div style="margin-top:24px;display:flex;gap:40px;padding-top:12px;border-top:1px solid #eee;font-size:10px;color:#888">
     <div style="flex:1">ผู้จัดทำ: ___________________________</div>
@@ -5254,6 +5376,7 @@ function _isMobileDevice(){
 
 // ===== Quick Action Menu =====
 let _qaActive = null;
+let _qaSuppressClick = false;
 
 function showQuickAction(e, itemId){
   e.preventDefault();
@@ -5289,18 +5412,28 @@ function showQuickAction(e, itemId){
   _qaActive = menu;
 
   // วาง menu ใกล้ตำแหน่งที่คลิก
-  const x = e.clientX || (e.touches && e.touches[0].clientX) || 0;
-  const y = e.clientY || (e.touches && e.touches[0].clientY) || 0;
+  // [H-4] เดิมเขียน e.touches[0].clientX ตรง ๆ ถ้า touches ว่างจะ TypeError
+  const _t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || null;
+  const x = e.clientX || (_t ? _t.clientX : 0) || 0;
+  const y = e.clientY || (_t ? _t.clientY : 0) || 0;
   const mw = 190, mh = 180;
   menu.style.left = Math.min(x, window.innerWidth - mw - 10) + 'px';
   menu.style.top  = Math.min(y, window.innerHeight - mh - 10) + 'px';
 
-  setTimeout(() => {
-    document.addEventListener('click', closeQuickAction, { once: true });
-  }, 0);
+  // [H-3] บนมือถือ พอปล่อยนิ้วเบราว์เซอร์จะยิง click ตามมา ทำให้เมนูปิดทันทีที่เพิ่งเปิด
+  //       จึงต้อง "กลืน" click แรกที่เกิดจากการปล่อยนิ้วครั้งนั้นไป
+  _qaSuppressClick = (e.type === 'touchstart' || e.type === 'touchmove' || !!_t);
+  setTimeout(() => { document.addEventListener('click', _qaDocClick); }, 0);
+}
+
+function _qaDocClick(){
+  if(_qaSuppressClick){ _qaSuppressClick = false; return; }
+  closeQuickAction();
 }
 
 function closeQuickAction(){
+  document.removeEventListener('click', _qaDocClick);
+  _qaSuppressClick = false;
   if(_qaActive){ _qaActive.remove(); _qaActive = null; }
 }
 
