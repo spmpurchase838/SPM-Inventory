@@ -884,6 +884,20 @@ function _paintPending(){
   el.title = 'ยังส่งขึ้น Google Sheet ไม่สำเร็จ: ' + p.join(', ') + ' (กดเพื่อลองส่งอีกครั้ง)';
 }
 
+// [Fix R-2] ล็อกกลางสำหรับ "เขียนทับข้อมูลรายวัน" (saveDaily/deleteDailyDate)
+// ปัญหาเดิม: การกันกดซ้ำมีแค่ "ต่อสินค้า" (_seSaving[itemId]) แต่ saveDaily เขียนทับข้อมูล "ทั้งวัน"
+// ถ้ากดบันทึกสินค้า A แล้วรีบกดบันทึกสินค้า B ต่อทันที (หรือ retryPending ทำงานอัตโนมัติ
+// พร้อมกับที่ผู้ใช้กำลังกดบันทึก/ลบ/undo อยู่) จะมี 2 คำขอเขียนวันเดียวกันวิ่งพร้อมกัน
+// คำขอไหนถึงเซิร์ฟเวอร์ทีหลังจะเขียนทับคำขอก่อนหน้าทิ้งไปเงียบ ๆ — แถวที่บันทึกไปก่อนจะหายจากชีต
+// ทางแก้: รวมทุกจุดที่ merge+เขียนทับวันเดียวกัน (saveStockItem, undoDelete, deleteDailyEntry,
+// saveEditDailyEntry, retryPending) ให้วิ่งผ่านคิวเดียวกันนี้ ทำงานทีละคำขอเท่านั้น
+let _dayWriteChain = Promise.resolve();
+function withDayWriteLock(fn){
+  const run = _dayWriteChain.then(fn, fn);
+  _dayWriteChain = run.then(()=>{}, ()=>{}); // กันคิวค้างถ้ามี error/reject
+  return run;
+}
+
 // ส่งข้อมูลของวันที่ค้างอยู่ขึ้นชีตอีกครั้ง
 // [Fix 2.19] ฟังก์ชันนี้ถูกยิงจาก 3 ทาง (event online / setInterval 90 วิ / setTimeout ตอนโหลด)
 // ถ้าไม่มี guard จะส่ง saveDaily วันเดียวกันซ้อนกันได้
@@ -897,32 +911,45 @@ async function retryPending(silent){
   if(!navigator.onLine){ if(!silent) showToast('ยังไม่มีอินเทอร์เน็ต', 'error'); return; }
   let ok = 0, fail = 0;
   for(const date of p){
-    const day = MOCK_DAILY.find(d => d.date === date);
     try {
-      // [C-1/C-2] ส่งซ้ำ = เขียนทับทั้งวันอีกครั้ง ต้อง merge ของบนชีตก่อนเสมอ
-      if(day){
-        const mg = await _mergeServerDay(day);
-        if(!mg.ok) throw new Error('ตรวจสอบข้อมูลบนชีตไม่ได้');
-        _clearStockCache(); _clearDailyIndex(); _saveDailyData();
-      }
-      if(day && day.entries && day.entries.length){
-        const res = await fetchTO(GS_URL, {
-          method:'POST', headers:{'Content-Type':'text/plain'}, redirect:'follow',
-          body: JSON.stringify({ action:'saveDaily', token:API_TOKEN, date:day.date,
-                                 date_th:day.date_th, recorded_by:day.recorded_by, entries:day.entries })
-        });
-        const j = await res.json();
-        if(!j.ok) throw new Error(j.error||'ส่งไม่สำเร็จ');
-      } else {
-        const res = await fetchTO(GS_URL, {
-          method:'POST', headers:{'Content-Type':'text/plain'}, redirect:'follow',
-          body: JSON.stringify({ action:'deleteDailyDate', token:API_TOKEN, date:date })
-        });
-        const j = await res.json();
-        if(!j.ok) throw new Error(j.error||'ลบไม่สำเร็จ');
-        if(day){ const _i = MOCK_DAILY.indexOf(day); if(_i >= 0) MOCK_DAILY.splice(_i, 1); _saveDailyData(); }
-      }
-      _clearPending(date); ok++;
+      // [Fix R-2] ครอบทั้ง merge+เขียนทับด้วยคิวกลาง กันชนกับการบันทึก/ลบ/undo ที่ผู้ใช้ทำอยู่พร้อมกัน
+      await withDayWriteLock(async () => {
+        const day = MOCK_DAILY.find(d => d.date === date);
+        // [C-1/C-2] ส่งซ้ำ = เขียนทับทั้งวันอีกครั้ง ต้อง merge ของบนชีตก่อนเสมอ
+        if(day){
+          const mg = await _mergeServerDay(day);
+          if(!mg.ok) throw new Error('ตรวจสอบข้อมูลบนชีตไม่ได้');
+          _clearStockCache(); _clearDailyIndex(); _saveDailyData();
+        }
+        if(day && day.entries && day.entries.length){
+          const res = await fetchTO(GS_URL, {
+            method:'POST', headers:{'Content-Type':'text/plain'}, redirect:'follow',
+            body: JSON.stringify({ action:'saveDaily', token:API_TOKEN, date:day.date,
+                                   date_th:day.date_th, recorded_by:day.recorded_by, entries:day.entries })
+          });
+          const j = await res.json();
+          if(!j.ok) throw new Error(j.error||'ส่งไม่สำเร็จ');
+        } else {
+          // [Fix R-3] วันนี้ไม่มีข้อมูลในเครื่องแล้ว ไม่ได้แปลว่าผู้ใช้ "ตั้งใจลบทั้งวัน" เสมอไป
+          // (เช่น localStorage เต็มจนแคชเก็บแค่ 60 วันล่าสุด แล้ววันเก่าที่ค้างส่งหลุดไปจาก MOCK_DAILY)
+          // สั่งลบทั้งวันบนชีตจริง ต่อเมื่อมีบันทึกว่าผู้ใช้ลบทุกแถวของวันนี้ไปแล้วเท่านั้น
+          const delSigsAll = _getDeletedSigs();
+          const hadDeletedSigs = Array.isArray(delSigsAll[date]) && delSigsAll[date].length > 0;
+          if(!hadDeletedSigs){
+            _clearPending(date);
+            return;
+          }
+          const res = await fetchTO(GS_URL, {
+            method:'POST', headers:{'Content-Type':'text/plain'}, redirect:'follow',
+            body: JSON.stringify({ action:'deleteDailyDate', token:API_TOKEN, date:date })
+          });
+          const j = await res.json();
+          if(!j.ok) throw new Error(j.error||'ลบไม่สำเร็จ');
+          if(day){ const _i = MOCK_DAILY.indexOf(day); if(_i >= 0) MOCK_DAILY.splice(_i, 1); _saveDailyData(); }
+        }
+        _clearPending(date);
+      });
+      ok++;
     } catch(e){ fail++; }
   }
   if(!silent || ok) showToast(fail ? ('ส่งสำเร็จ ' + ok + ' วัน, ยังค้าง ' + fail + ' วัน') : ('✅ ส่งข้อมูลค้างขึ้น Sheet ครบแล้ว (' + ok + ' วัน)'), fail?'error':'success');
@@ -1163,6 +1190,12 @@ function closeSidebarOnMobile(){
 }
 
 function showPage(page, pushHistory=true){
+  // [Fix R-10] หน้าพิมพ์บนมือถือ (exportVariancePDF/exportDailyPDF/_exportPrintView) ตั้ง
+  // setTimeout 30 วิไว้ปิดหน้าพิมพ์อัตโนมัติแล้วคืน main.innerHTML เดิมกลับมา ถ้าผู้ใช้กด ☰ ไปหน้าอื่น
+  // ก่อนครบ 30 วิ (โดยไม่ได้กดปุ่ม "✕ ปิดหน้าพิมพ์" เอง) ตัวจับเวลาเก่าจะยังทำงานอยู่ และจะดันเนื้อหา
+  // หน้าพิมพ์เดิม (ก่อนออกจากหน้านั้น) ไปทับหน้าใหม่ที่ผู้ใช้กำลังดูอยู่แบบไม่มีสาเหตุ — ล้างตัวจับเวลา
+  // ทุกครั้งที่มีการเปลี่ยนหน้าจริงผ่าน showPage() กันปัญหานี้
+  clearTimeout(window._mobilePrintTimer);
   window._currentPageName = page;   // ใช้ตอนกดปุ่มโหลดข้อมูลใหม่ จะได้กลับมาหน้าเดิม
   closeSidebarOnMobile();
   if(pushHistory) history.pushState({page}, '', '#' + page);
@@ -1344,7 +1377,7 @@ function renderDashboard(){
     return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f5f5f5">
       <div>
         <div style="font-size:12.5px;font-weight:600;color:#1a2535">📅 ${escHtml(day.date_th)}</div>
-        <div style="font-size:11px;color:#aaa;margin-top:1px">${day.entries.length} รายการ · ${day.recorded_by}</div>
+        <div style="font-size:11px;color:#aaa;margin-top:1px">${day.entries.length} รายการ · ${escHtml(day.recorded_by)}</div>
       </div>
       <div style="font-size:12px;font-weight:700;color:#2874a6">${kg.toLocaleString()} กก.</div>
     </div>`;
@@ -1404,7 +1437,10 @@ function renderList(){
   const filtered = getFiltered();
   const total = filtered.length;
   const pages = Math.ceil(total/PAGE_SIZE)||1;
-  if(currentPage>pages) currentPage=1;
+  // [Fix R-11] เดิมถ้าหน้าปัจจุบันเกินจำนวนหน้าที่มีจริง (เช่น ลบรายการสุดท้ายของหน้า 6 จาก 6)
+  // จะกระโดดกลับไปหน้า 1 เสมอ ทั้งที่ควรถอยไปหน้าสุดท้ายที่ยังมีอยู่ (หน้า 5) ผู้ใช้จะงงว่าทำไม
+  // อยู่ ๆ ถูกเด้งกลับไปดูรายการต้น ๆ ของลิสต์หลังลบของแค่รายการเดียว
+  if(currentPage>pages) currentPage=pages;
   const sorted = _applySortToFiltered(filtered);
   const slice = sorted.slice((currentPage-1)*PAGE_SIZE, currentPage*PAGE_SIZE);
   const catLabel = currentFilter === 'all' ? 'ทั้งหมด' : currentFilter + ' — ' + (CODE_MAP[currentFilter]||'');
@@ -1844,6 +1880,11 @@ async function saveNew(){
       body: JSON.stringify(payload),
       redirect: 'follow',
     });
+  // [Fix R-7] เดิมเช็คแค่ res.json() ไม่เช็ค HTTP status ก่อน ถ้า Apps Script ตอบช้าเกิน timeout
+  // หรือ redirect ไปหน้า HTML แทน JSON (พบได้กับ Apps Script) หลังจากแถวถูกเขียนขึ้นชีตไปแล้วจริง
+  // ผู้ใช้จะเห็น "บันทึกไม่สำเร็จ" ทั้งที่จริงสำเร็จ พอกดบันทึกใหม่ (เช็ค No. ซ้ำผ่านเพราะ db ในเครื่อง
+  // ยังไม่มีแถวนี้) จะได้สินค้าซ้ำ 2 แถวในชีต ทำให้ยอดสต็อกถูกนับสองเท่าทุกจุดที่สรุปยอด
+  if(!res.ok) throw new Error('เซิร์ฟเวอร์ตอบผิดปกติ (HTTP ' + res.status + ') — กรุณาตรวจสอบในชีตก่อนกดบันทึกซ้ำ');
   const json = await res.json();
   if(!json.ok) throw new Error(json.error || 'บันทึกไม่สำเร็จ');
 
@@ -1910,15 +1951,6 @@ async function saveEdit(id){
 
     // [Fix 1.7] ถ้า No. เปลี่ยน ต้องย้ายประวัติทั้งหมดตามไปด้วย ไม่งั้นกลายเป็นข้อมูลกำพร้า
     const noChanged = (r.no !== newNo);
-    let affectedDates = [];
-    if(noChanged){
-      MOCK_DAILY.forEach(day => {
-        if(!day || !Array.isArray(day.entries)) return;
-        let touched = false;
-        day.entries.forEach(e => { if(e.no === r.no){ e.no = newNo; touched = true; } });
-        if(touched) affectedDates.push(day.date);
-      });
-    }
 
     const payload = {
       action: 'saveItem',
@@ -1945,8 +1977,24 @@ async function saveEdit(id){
       body: JSON.stringify(payload),
       redirect: 'follow',
     });
+    if(!res.ok) throw new Error('เซิร์ฟเวอร์ตอบผิดปกติ (HTTP ' + res.status + ')');
     const json = await res.json();
     if(!json.ok) throw new Error(json.error || 'แก้ไขไม่สำเร็จ');
+
+    // [Fix R-6] เดิมเปลี่ยนเลข No. ในประวัติ MOCK_DAILY (บล็อกด้านล่าง) ก่อนรู้ผลจากเซิร์ฟเวอร์
+    // ถ้า saveItem ล้มเหลว (ไทม์เอาต์/เน็ตหลุด/ตอบไม่ใช่ JSON) ประวัติจะถูกเปลี่ยนเลขไปแล้ว
+    // ทั้งที่สินค้าในชีตยังเป็นเลขเดิม ทำให้สต็อกของสินค้านั้นหายไปจากทุกหน้า (no ไม่ตรงกับ db อีกต่อไป)
+    // และความผิดพลาดนี้จะถูกบันทึกถาวรตอนมีการบันทึกครั้งต่อไป — ย้ายมาทำ "หลัง" จากยืนยันว่า
+    // เซิร์ฟเวอร์บันทึกสำเร็จแล้ว (json.ok === true) เท่านั้น
+    let affectedDates = [];
+    if(noChanged){
+      MOCK_DAILY.forEach(day => {
+        if(!day || !Array.isArray(day.entries)) return;
+        let touched = false;
+        day.entries.forEach(e => { if(e.no === r.no){ e.no = newNo; touched = true; } });
+        if(touched) affectedDates.push(day.date);
+      });
+    }
 
     const idx = db.findIndex(x=>x.id===id);
     db[idx] = updated;
@@ -2207,6 +2255,7 @@ function compressImageToBase64(file, maxBytes = 40000){
           {w: 400, q: 0.35}, {w: 300, q: 0.3},
         ];
         let result = null;
+        let fitsLimit = false;
         for(const a of attempts){
           let w = img.width, h = img.height;
           if(w > a.w){ h = Math.round(h * (a.w / w)); w = a.w; }
@@ -2214,8 +2263,17 @@ function compressImageToBase64(file, maxBytes = 40000){
           canvas.width = w; canvas.height = h;
           canvas.getContext('2d').drawImage(img, 0, 0, w, h);
           const dataUrl = canvas.toDataURL('image/jpeg', a.q);
-          if(dataUrl.length <= maxBytes){ result = dataUrl; break; }
+          if(dataUrl.length <= maxBytes){ result = dataUrl; fitsLimit = true; break; }
           result = dataUrl;
+        }
+        // [Fix R-14] เดิมถ้าบีบอัดจนสุด (ทุก attempt) ยังเกิน maxBytes ก็ resolve(result) คืนรูปที่ยัง
+        // ใหญ่เกินไปอยู่ดี โดยไม่มีการเตือนเลย — ถ้ารูปนั้นทำให้ payload ของ saveDaily เกิน 50,000
+        // ตัวอักษรต่อเซลล์ของ Google Sheets วันนั้นจะค้างอยู่ในคิว "รอส่ง" ตลอดไป เพราะ retryPending
+        // ส่ง payload เดิม (ที่ยังใหญ่เกิน) ซ้ำทุก 90 วิ ไม่มีทางหลุดจากสถานะนี้ได้เอง
+        // ตอนนี้ reject แทน ให้ผู้เรียก (uploadImg/handleStockImages) แจ้งผู้ใช้แทนที่จะรับรูปที่ยังใหญ่เกินไป
+        if(!fitsLimit){
+          reject(new Error('รูปมีขนาดใหญ่เกินไปหลังบีบอัดสุดแล้ว (' + Math.round((result?result.length:0)/1024) + ' KB) กรุณาใช้รูปที่มีความละเอียดต่ำกว่านี้'));
+          return;
         }
         resolve(result);
       };
@@ -2744,7 +2802,13 @@ async function _mergeServerDay(day){
       add.push(Object.assign({}, e, {location: normLoc(e.location||'')}));
     });
     if(add.length){
-      day.entries.unshift(...add);
+      // [Fix R-1] เดิมใช้ unshift() แทรกแถวที่ดึงจากชีตไว้ "หน้าสุด" ของวัน
+      // ถ้าเราเคยกด "↺ แทนที่ยอดเดิม" (snap:true) ไว้ในวันเดียวกัน _entriesForNo() จะเจอ
+      // snapshot แล้วล้างยอดก่อนหน้าทั้งหมด ทำให้แถวของเพื่อนร่วมงานที่ถูกแทรกไว้ "ก่อน" snapshot
+      // (ทั้งที่จริงบันทึกทีหลัง) หายไปจากยอดสต็อกอย่างเงียบ ๆ และลำดับที่ผิดนี้จะถูกเขียนทับ
+      // กลับขึ้นชีตจริงในการบันทึกครั้งต่อไป — เปลี่ยนเป็น push() ต่อท้ายแทน เพื่อให้แถวที่ดึงมา
+      // ไม่มีวันไปแทรกอยู่ "ก่อน" snapshot ของเราเอง (กรณีปกติ: เพื่อนร่วมงานบันทึกหลังเราเปิดแอปไว้)
+      day.entries.push(...add);
       _clearStockCache(); _clearDailyIndex();
     }
     return {ok:true, added:add.length};
@@ -2816,62 +2880,66 @@ async function saveStockItem(itemId, btnEl){
       _clearDailyIndex();
     }
 
-    // [FIX-A12] ดึงของวันนี้จากชีตมารวมก่อน กันทับข้อมูลที่คนอื่นเพิ่งบันทึกไป
-    const _merged = await _mergeServerDay(todayRecord);
-    if(_merged.added) showToast('ℹ️ พบข้อมูลใหม่จากเพื่อนร่วมงาน ' + _merged.added + ' แถว — รวมให้แล้ว');
-
-    if(mode === 'replace'){
-      // [Fix 1.2] เดิมลบเฉพาะ entry ของ "วันนี้" แต่ยอดสต็อกคำนวณจากการบวกสะสม "ทุกวัน"
-      // โหมดแทนที่จึงไม่เคยแทนที่จริง ยอดเก่ายังอยู่ครบและเพี้ยนสะสมไปเรื่อย ๆ
-      // ตอนนี้ใช้ธง snap:true บน entry แรก แล้ว _entriesForNo จะรีเซ็ตยอดสะสมทั้งหมดที่จุดนั้น
-      // (ไม่ต้องไล่ลบข้อมูลย้อนหลัง ประวัติการรับของยังอยู่ครบเหมือนเดิม)
-      todayRecord.entries = todayRecord.entries.filter(e => e.no !== r.no);
-    }
-
-    const itemImgs = window._seImgs ? (window._seImgs[itemId]||[]) : [];
-    newEntries.forEach((s, i) => {
-      todayRecord.entries.push({
-        no: r.no, desc: r.desc, code: r.code,
-        location: s.location||'', storage: s.loc||'',
-        qty: parseFloat(s.qty), unit: s.unit||'',
-        kgPerUnit: s.kgPerUnit||'',
-        // [Fix 1.2] เฉพาะแถวแรกของชุดที่ถูกทำเครื่องหมายว่า "นับใหม่"
-        ...(mode === 'replace' && i === 0 ? {snap:true} : {}),
-        // [Fix 2.20] แนบรูปกับแถวแรกแถวเดียว และ copy array กันไม่ให้ทุก entry ชี้ตัวเดียวกัน
-        note: s.note||'', images: (i === 0 ? [...itemImgs] : [])
-      });
-    });
-    _clearStockCache();
-    _clearDailyIndex();
-
-    // ส่งไป Google Sheet ก่อน — ปุ่มยัง disabled อยู่ตลอดช่วงรอนี้ ไม่รีเซ็ตก่อนเวลา
+    // [Fix R-2] ครอบทั้ง merge + แก้ entries + ส่ง saveDaily ด้วยคิวกลาง (withDayWriteLock)
+    // กันชนกับการบันทึกสินค้าอื่น/undo/ลบ/retry ที่อาจกำลังเขียนวันเดียวกันอยู่พร้อมกัน
     let syncOk = true, syncErrMsg = '';
-    // [C-2] ถ้า _mergeServerDay ยืนยันสถานะบนชีตไม่ได้ ห้ามส่ง saveDaily (จะทับข้อมูลคนอื่น)
-    if(!_merged.ok){
-      syncOk = false;
-      syncErrMsg = 'ตรวจสอบข้อมูลบนชีตไม่ได้ในตอนนี้';
-    } else {
-    try {
-      const payload = {
-        action: 'saveDaily',
-        token: API_TOKEN,
-        date: dateStr,
-        date_th: dateTh,
-        recorded_by: currentUser || 'ผู้ใช้',
-        entries: todayRecord.entries,
-      };
-      const res = await fetchTO(GS_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify(payload),
-        redirect: 'follow',
+    await withDayWriteLock(async () => {
+      // [FIX-A12] ดึงของวันนี้จากชีตมารวมก่อน กันทับข้อมูลที่คนอื่นเพิ่งบันทึกไป
+      const _merged = await _mergeServerDay(todayRecord);
+      if(_merged.added) showToast('ℹ️ พบข้อมูลใหม่จากเพื่อนร่วมงาน ' + _merged.added + ' แถว — รวมให้แล้ว');
+
+      if(mode === 'replace'){
+        // [Fix 1.2] เดิมลบเฉพาะ entry ของ "วันนี้" แต่ยอดสต็อกคำนวณจากการบวกสะสม "ทุกวัน"
+        // โหมดแทนที่จึงไม่เคยแทนที่จริง ยอดเก่ายังอยู่ครบและเพี้ยนสะสมไปเรื่อย ๆ
+        // ตอนนี้ใช้ธง snap:true บน entry แรก แล้ว _entriesForNo จะรีเซ็ตยอดสะสมทั้งหมดที่จุดนั้น
+        // (ไม่ต้องไล่ลบข้อมูลย้อนหลัง ประวัติการรับของยังอยู่ครบเหมือนเดิม)
+        todayRecord.entries = todayRecord.entries.filter(e => e.no !== r.no);
+      }
+
+      const itemImgs = window._seImgs ? (window._seImgs[itemId]||[]) : [];
+      newEntries.forEach((s, i) => {
+        todayRecord.entries.push({
+          no: r.no, desc: r.desc, code: r.code,
+          location: s.location||'', storage: s.loc||'',
+          qty: parseFloat(s.qty), unit: s.unit||'',
+          kgPerUnit: s.kgPerUnit||'',
+          // [Fix 1.2] เฉพาะแถวแรกของชุดที่ถูกทำเครื่องหมายว่า "นับใหม่"
+          ...(mode === 'replace' && i === 0 ? {snap:true} : {}),
+          // [Fix 2.20] แนบรูปกับแถวแรกแถวเดียว และ copy array กันไม่ให้ทุก entry ชี้ตัวเดียวกัน
+          note: s.note||'', images: (i === 0 ? [...itemImgs] : [])
+        });
       });
-      const json = await res.json();
-      if(!json.ok) throw new Error(json.error || 'ส่งข้อมูลไม่สำเร็จ');
-    } catch(e) {
-      syncOk = false; syncErrMsg = e.message;
-    }
-    }
+      _clearStockCache();
+      _clearDailyIndex();
+
+      // ส่งไป Google Sheet ก่อน — ปุ่มยัง disabled อยู่ตลอดช่วงรอนี้ ไม่รีเซ็ตก่อนเวลา
+      // [C-2] ถ้า _mergeServerDay ยืนยันสถานะบนชีตไม่ได้ ห้ามส่ง saveDaily (จะทับข้อมูลคนอื่น)
+      if(!_merged.ok){
+        syncOk = false;
+        syncErrMsg = 'ตรวจสอบข้อมูลบนชีตไม่ได้ในตอนนี้';
+        return;
+      }
+      try {
+        const payload = {
+          action: 'saveDaily',
+          token: API_TOKEN,
+          date: dateStr,
+          date_th: dateTh,
+          recorded_by: currentUser || 'ผู้ใช้',
+          entries: todayRecord.entries,
+        };
+        const res = await fetchTO(GS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify(payload),
+          redirect: 'follow',
+        });
+        const json = await res.json();
+        if(!json.ok) throw new Error(json.error || 'ส่งข้อมูลไม่สำเร็จ');
+      } catch(e) {
+        syncOk = false; syncErrMsg = e.message;
+      }
+    });
     if(syncOk) _clearPending(dateStr); else _markPending(dateStr);
 
     // reset input (ทำหลังจาก sync เสร็จแล้วเท่านั้น กันกดซ้ำระหว่างรอ)
@@ -3035,7 +3103,7 @@ function renderStockView(container){
     <div style="font-size:15px;font-weight:600;color:#1a5276;margin-bottom:10px">📦 สรุปสต็อกสินค้า</div>
     <div id="svCodeBtns">${renderCodeBtns()}</div>
     <div style="margin-top:10px;margin-bottom:10px;height:1px;background:#eee"></div>
-    <input type="text" placeholder="ค้นหาชื่อสินค้า / No...."
+    <input type="text" id="svSearchInput" placeholder="ค้นหาชื่อสินค้า / No...."
       style="width:100%;padding:8px 12px;border:1px solid #d5d8dc;border-radius:6px;font-size:13px;margin-bottom:12px"
       oninput="window._renderSV(this.value)">
   </div>
@@ -3043,7 +3111,11 @@ function renderStockView(container){
 
   window._selectSVCode = (code) => {
     selectedSVCode = code;
-    document.getElementById('svWrap').innerHTML = renderCardsFiltered(code, '');
+    // [Fix R-13] เดิมกดปุ่มเลือกกลุ่ม (A/B/C) แล้วเคลียร์คำค้นหาทิ้งเงียบ ๆ (ส่ง '' ตรง ๆ)
+    // ทั้งที่กล่องค้นหายังโชว์คำเดิมอยู่ ทำให้ผลลัพธ์ที่ขึ้นไม่ตรงกับคำที่พิมพ์ค้างไว้ ดูเหมือนบัค
+    // ตอนนี้อ่านค่าปัจจุบันจากกล่องค้นหามาใช้กรองต่อด้วย แทนที่จะรีเซ็ตเป็นค่าว่างเสมอ
+    const searchInp = document.getElementById('svSearchInput');
+    document.getElementById('svWrap').innerHTML = renderCardsFiltered(code, searchInp ? searchInp.value : '');
     availCodes.forEach(c => {
       const btn = document.getElementById('svbtn_' + c);
       if(btn){
@@ -3561,9 +3633,11 @@ function exportVariancePDF(){
     const arrow = diff > 0 ? '▲' : diff < 0 ? '▼' : '–';
     const color = diff > 0 ? '#27ae60' : diff < 0 ? '#c0392b' : '#888';
     const bgColor = diff < 0 ? '#fff5f5' : diff > 0 ? '#f0fff4' : 'white';
+    // [Fix R-9] no/desc มาจากฟอร์มเพิ่ม/แก้ไขสินค้าที่เป็นข้อความเสรี ต้อง escHtml ก่อนแทรกลง innerHTML
+    // เดิมแทรกตรง ๆ ถ้ามีใครกรอกชื่อสินค้าที่มีอักขระ HTML/JS แฝงอยู่ จะรันบนหน้าจอทุกคนที่พิมพ์รายงานนี้
     return `<tr style="background:${bgColor};border-bottom:1px solid #eee">
-      <td style="padding:7px 10px;font-size:11px;font-family:monospace">${no}</td>
-      <td style="padding:7px 10px;font-size:11px">${desc}</td>
+      <td style="padding:7px 10px;font-size:11px;font-family:monospace">${escHtml(no)}</td>
+      <td style="padding:7px 10px;font-size:11px">${escHtml(desc)}</td>
       <td style="padding:7px 10px;text-align:right;font-size:11px">${kg1.toLocaleString()} กก.</td>
       <td style="padding:7px 10px;text-align:right;font-size:11px">${kg2.toLocaleString()} กก.</td>
       <td style="padding:7px 10px;text-align:right;font-size:11px;font-weight:700;color:${color}">
@@ -3591,7 +3665,7 @@ function exportVariancePDF(){
         <div>
           <div style="font-size:13px;font-weight:700;color:#1a5276">เปรียบเทียบสต็อกวัตถุดิบ</div>
           <div style="font-size:11px;color:#777;margin-top:4px">
-            📅 ${v.d1_th} เทียบกับ ${v.d2_th}
+            📅 ${escHtml(v.d1_th)} เทียบกับ ${escHtml(v.d2_th)}
           </div>
         </div>
         <div style="text-align:right;font-size:11px;color:#777">
@@ -3623,8 +3697,8 @@ function exportVariancePDF(){
           <tr style="background:#1a5276;color:white">
             <th style="padding:7px 10px;text-align:left;font-size:11px">รหัส</th>
             <th style="padding:7px 10px;text-align:left;font-size:11px">ชื่อสินค้า</th>
-            <th style="padding:7px 10px;text-align:right;font-size:11px">${v.d1_th}</th>
-            <th style="padding:7px 10px;text-align:right;font-size:11px">${v.d2_th}</th>
+            <th style="padding:7px 10px;text-align:right;font-size:11px">${escHtml(v.d1_th)}</th>
+            <th style="padding:7px 10px;text-align:right;font-size:11px">${escHtml(v.d2_th)}</th>
             <th style="padding:7px 10px;text-align:right;font-size:11px">ส่วนต่าง</th>
           </tr>
         </thead>
@@ -3769,7 +3843,7 @@ function pushUndo(type, data, date, meta){
 function showUndoToast(type, data, date, msg){
   const toast = document.getElementById('toast');
   if(!toast) return;
-  toast.innerHTML = escHtml(msg || 'ลบรายการแล้ว') + ` &nbsp;<button onclick="undoDelete()"
+  toast.innerHTML = escHtml(msg || 'ลบรายการแล้ว') + ` &nbsp;<button id="undoBtn" onclick="undoDelete()"
     style="background:rgba(255,255,255,.2);border:none;color:white;padding:2px 10px;border-radius:4px;cursor:pointer;font-size:12px;font-family:inherit;margin-left:4px">↩ Undo</button>`;
   toast.style.display = 'block';
   toast.classList.remove('error');
@@ -3779,8 +3853,17 @@ function showUndoToast(type, data, date, msg){
 }
 
 async function undoDelete(){
+  // [Fix R-5] เดิม undoDelete ไม่มีการกันกดซ้ำเลย (ต่างจาก deleteDailyEntry/saveEditDailyEntry
+  // ที่มี _dailyMutating) ปุ่ม Undo ยังกดได้ตลอด 8 วิของ toast แม้ระหว่างรอ sync ครั้งแรกอยู่
+  // (นานได้ถึง 25 วิ) กดซ้ำ 2 ครั้งเร็ว ๆ จะ pop รายการอื่นที่ไม่เกี่ยวข้องออกจาก _undoStack
+  // มา undo ผิดตัว และเกิดการเขียนทับข้อมูลวันเดียวกันซ้อนกัน 2 คำขอ
+  if(_dailyMutating){ showToast('กำลังบันทึกรายการก่อนหน้าอยู่ กรุณารอสักครู่'); return; }
   const last = _undoStack.pop();
   if(!last) return;
+  _dailyMutating = true;
+  const undoBtn = document.getElementById('undoBtn');
+  if(undoBtn) undoBtn.disabled = true;
+  try {
   let day = MOCK_DAILY.find(d=>d.date===last.date);
 
   // [BugFix #8] ถ้าวันนั้นถูกลบออกไปแล้ว (entry สุดท้ายของวันถูกลบแล้ว sync สำเร็จ)
@@ -3798,6 +3881,9 @@ async function undoDelete(){
     MOCK_DAILY.sort((a,b) => a.date.localeCompare(b.date));
   }
 
+  // [Fix R-2] ครอบทั้ง merge + push entry คืนกลับ + POST ด้วยคิวกลาง กันชนกับ
+  // saveStockItem/deleteDailyEntry/saveEditDailyEntry/retryPending ที่อาจเขียนวันเดียวกันอยู่พร้อมกัน
+  await withDayWriteLock(async () => {
   // [C-2] merge ก่อน ไม่งั้น undo จะเขียนทับแถวที่เพื่อนร่วมงานเพิ่งเพิ่ม
   const _mg = await _mergeServerDay(day);
   // ถ้าแถวนี้ยังอยู่บนชีต (ตอนลบ sync ไม่สำเร็จ) merge จะดึงกลับมาแล้ว ไม่ต้อง push ซ้ำ
@@ -3827,8 +3913,12 @@ async function undoDelete(){
     _markPending(day.date);
     showToast('⚠️ คืนค่าในเครื่องแล้ว แต่ยังไม่ขึ้น Sheet: ' + e.message, 'error');
   }
+  });
 
   _redrawDaily(last.date);
+  } finally {
+    _dailyMutating = false;
+  }
 }
 
 
@@ -3848,13 +3938,17 @@ async function deleteDailyEntry(date, entryIdx){
 
   // [C-1] saveDaily/deleteDailyDate = "เขียนทับทั้งวัน" ต้องดึงของบนชีตมารวมก่อนเสมอ
   //       ไม่งั้นแถวที่เพื่อนร่วมงานเพิ่งบันทึกจะถูกลบหายไปด้วย
-  //       ต้องจำ "ตัว entry" ไว้ก่อน merge เพราะ merge จะ unshift ทำให้ index เลื่อน
-  const _target = day.entries[entryIdx];
+  //       ต้องจำ "ตัว entry" ไว้ก่อน merge เพราะ merge จะ push ทำให้ index เลื่อนได้
   showToast('⏳ กำลังตรวจสอบข้อมูลบนชีตก่อนลบ...');
+  // [Fix R-2] ครอบทั้ง merge + ลบ entry + POST ด้วยคิวกลาง (withDayWriteLock) กันชนกับ
+  // saveStockItem/undoDelete/retryPending ที่อาจกำลังเขียนวันเดียวกันอยู่พร้อมกัน (_dailyMutating
+  // ด้านบนกันแค่ delete/edit ชนกันเอง ไม่ครอบคลุมฟังก์ชันอื่นที่เขียนวันเดียวกัน)
+  await withDayWriteLock(async () => {
+  const _target = day.entries[entryIdx];
   const _mg = await _mergeServerDay(day);
   let _idx = day.entries.indexOf(_target);
   if(_idx < 0) _idx = entryIdx;
-  if(_idx < 0 || _idx >= day.entries.length){ _dailyMutating = false; return; }
+  if(_idx < 0 || _idx >= day.entries.length) return;
   const deleted = day.entries.splice(_idx, 1)[0];
   // [Fix 2.22] เก็บ meta ของวันไว้ด้วย ไม่งั้น undo จะได้วันที่แบบ ISO และชื่อผู้บันทึกของคนที่กด undo
   pushUndo('delete', deleted, date, {date_th: day.date_th, recorded_by: day.recorded_by});
@@ -3914,11 +4008,12 @@ async function deleteDailyEntry(date, entryIdx){
     _markDeletedSig(day.date, _entrySig(deleted));   // กันแถวนี้ถูก merge ดึงกลับมาตอนเน็ตกลับ
     showToast('⚠️ ลบในเครื่องแล้ว แต่ยังไม่ขึ้น Sheet: ' + e.message + ' — ระบบจะลองส่งใหม่ให้เอง', 'error');
   } finally {
-    _dailyMutating = false;
     // [FIX-A8] เดิมมี _saveDailyData()+_redrawDaily() ซ้ำอีกรอบนอก try
     // ทำให้หน้าถูกวาดสองครั้ง (กระพริบ) และปุ่ม Undo ในกล่องข้อความหายไป
     _redrawDaily(date);
   }
+  });
+  _dailyMutating = false;
 }
 
 function editDailyEntry(date, entryIdx){
@@ -4125,57 +4220,84 @@ async function saveEditDailyEntry(date, realIdx){
     window._editEntryKgPerUnit = '1000';
   }
 
-  // [C-2] merge ของบนชีตก่อน แล้วค่อยหา index ใหม่ของ entry เดิม (merge ทำให้ index เลื่อน)
-  const _target = day.entries[realIdx];
-  const _mg = await _mergeServerDay(day);
-  let _idx = day.entries.indexOf(_target);
-  if(_idx < 0) _idx = realIdx;
-  if(_idx < 0 || _idx >= day.entries.length){
-    showToast('ไม่พบรายการที่จะแก้ไข (อาจถูกลบไปแล้ว)', 'error');
+  // [Fix R-4] เดิมหน้า "แก้ไขรายการประจำวัน" ไม่บังคับเลือก Location (ต่างจากหน้าเพิ่มสต็อกใหม่ที่บังคับ — [H-5])
+  // ถ้า select ถูกรีเซ็ตเป็นค่าว่าง (เช่นค่าเดิมไม่อยู่ใน LOCATION_OPTIONS แล้ว) จะบันทึกทับด้วย location:''
+  // แถวนั้นจะหลุดจากตัวกรอง Location ทุกอันไปกองอยู่ใน "ไม่ระบุ" โดยไม่มีการเตือนเลย
+  const editLoc = document.getElementById('edit_loc').value.trim();
+  if(!editLoc){
+    showToast('กรุณาเลือก Location', 'error');
     if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'บันทึก'; }
     if(loader) loader.style.display = 'none';
     return;
   }
-  realIdx = _idx;
+  // [Fix R-4] เช็คความสมเหตุสมผลของจำนวนแบบเดียวกับหน้าเพิ่มสต็อก ([2782]) — เดิมหน้านี้ไม่มีเช็คนี้
+  if(editQty > 999999){
+    showToast('จำนวนดูเหมือนผิดปกติ (' + editQty.toLocaleString() + ') กรุณาตรวจสอบ', 'error');
+    if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'บันทึก'; }
+    if(loader) loader.style.display = 'none';
+    return;
+  }
 
-  day.entries[realIdx] = {
-    ...day.entries[realIdx],
-    location: document.getElementById('edit_loc').value.trim(),
-    storage:  document.getElementById('edit_storage').value.trim(),
-    qty:      editQty,
-    unit:     editUnit,
-    kgPerUnit: (editUnit === 'กระสอบ' || editUnit === 'bigbag') ? (window._editEntryKgPerUnit||'') : '',
-    note:     document.getElementById('edit_note').value.trim(),
-    images:   window._editEntryImgs || [],
-  };
-  delete day.entries[realIdx].image; // เลิกใช้ field เดี่ยวแบบเก่า รวมเป็น images array แทน
+  // [Fix R-2] ครอบทั้ง merge + แก้ entry + ส่ง saveDaily ด้วยคิวกลาง กันชนกับการเขียนวันเดียวกัน
+  // จากที่อื่น (บันทึกสต็อก/undo/ลบ/retry) ที่อาจกำลังทำงานอยู่พร้อมกัน
+  let _editNotFound = false;
+  await withDayWriteLock(async () => {
+    // [C-2] merge ของบนชีตก่อน แล้วค่อยหา index ใหม่ของ entry เดิม (merge ทำให้ index เลื่อน)
+    const _target = day.entries[realIdx];
+    const _mg = await _mergeServerDay(day);
+    let _idx = day.entries.indexOf(_target);
+    if(_idx < 0) _idx = realIdx;
+    if(_idx < 0 || _idx >= day.entries.length){
+      _editNotFound = true;
+      return;
+    }
+    realIdx = _idx;
 
-  _clearStockCache();
-  _clearDailyIndex();
-  _saveDailyData();
-
-  // sync ไป Google Sheet — เขียนทับข้อมูลของวันนั้นทั้งหมดใหม่ (เดิมฟังก์ชันนี้ไม่เคย sync เลย)
-  try {
-    // [C-2] ยืนยันสถานะบนชีตไม่ได้ = ห้ามเขียนทับทั้งวัน ให้เข้าคิวไว้ส่งทีหลัง
-    if(!_mg.ok) throw new Error('ตรวจสอบข้อมูลบนชีตไม่ได้ในตอนนี้');
-    const payload = {
-      action: 'saveDaily', token: API_TOKEN,
-      date: day.date, date_th: day.date_th,
-      recorded_by: day.recorded_by, entries: day.entries,
+    day.entries[realIdx] = {
+      ...day.entries[realIdx],
+      location: editLoc,
+      storage:  document.getElementById('edit_storage').value.trim(),
+      qty:      editQty,
+      unit:     editUnit,
+      kgPerUnit: (editUnit === 'กระสอบ' || editUnit === 'bigbag') ? (window._editEntryKgPerUnit||'') : '',
+      note:     document.getElementById('edit_note').value.trim(),
+      images:   window._editEntryImgs || [],
     };
-    const res = await fetchTO(GS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(payload),
-      redirect: 'follow',
-    });
-    const json = await res.json();
-    if(!json.ok) throw new Error(json.error || 'แก้ไขไม่สำเร็จ');
-    _clearPending(day.date);
-    showToast('✅ แก้ไขเรียบร้อย (sync Sheet แล้ว)');
-  } catch(e) {
-    _markPending(day.date);
-    showToast('⚠️ แก้ไขในเครื่องแล้ว แต่ยังไม่ขึ้น Sheet: ' + e.message + ' — ระบบจะลองส่งใหม่ให้เอง', 'error');
+    delete day.entries[realIdx].image; // เลิกใช้ field เดี่ยวแบบเก่า รวมเป็น images array แทน
+
+    _clearStockCache();
+    _clearDailyIndex();
+    _saveDailyData();
+
+    // sync ไป Google Sheet — เขียนทับข้อมูลของวันนั้นทั้งหมดใหม่ (เดิมฟังก์ชันนี้ไม่เคย sync เลย)
+    try {
+      // [C-2] ยืนยันสถานะบนชีตไม่ได้ = ห้ามเขียนทับทั้งวัน ให้เข้าคิวไว้ส่งทีหลัง
+      if(!_mg.ok) throw new Error('ตรวจสอบข้อมูลบนชีตไม่ได้ในตอนนี้');
+      const payload = {
+        action: 'saveDaily', token: API_TOKEN,
+        date: day.date, date_th: day.date_th,
+        recorded_by: day.recorded_by, entries: day.entries,
+      };
+      const res = await fetchTO(GS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(payload),
+        redirect: 'follow',
+      });
+      const json = await res.json();
+      if(!json.ok) throw new Error(json.error || 'แก้ไขไม่สำเร็จ');
+      _clearPending(day.date);
+      showToast('✅ แก้ไขเรียบร้อย (sync Sheet แล้ว)');
+    } catch(e) {
+      _markPending(day.date);
+      showToast('⚠️ แก้ไขในเครื่องแล้ว แต่ยังไม่ขึ้น Sheet: ' + e.message + ' — ระบบจะลองส่งใหม่ให้เอง', 'error');
+    }
+  });
+  if(_editNotFound){
+    showToast('ไม่พบรายการที่จะแก้ไข (อาจถูกลบไปแล้ว)', 'error');
+    if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'บันทึก'; }
+    if(loader) loader.style.display = 'none';
+    return;
   }
 
   if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'บันทึก'; }
@@ -4571,24 +4693,36 @@ window._formatThDate = (dateStr) => {
   return day + ' ' + (MN[month-1]||'') + ' ' + (year+543);
 };
 
+// [Fix R-12] เดิมทุกครั้งที่เปิด date picker จะเพิ่ม document click listener ใหม่ (เพื่อปิดเมื่อคลิกนอก
+// popup) แต่ listener นั้นลบตัวเองออกเฉพาะตอน "คลิกนอก popup" เท่านั้น ถ้าปิดด้วยการเลือกวันที่
+// (_pickDate) แทน listener จะค้างอยู่ต่อไป เปิด/เลือกวันซ้ำ ๆ หลายรอบในเซสชันเดียวจะสะสม document
+// click handler เพิ่มขึ้นเรื่อย ๆ (memory leak เล็ก ๆ) — ตอนนี้เก็บ handler ปัจจุบันไว้ใน
+// window._dpOutsideClickHandler แล้วล้างของเก่าก่อนเพิ่มใหม่เสมอ และมีจุดปิดกลางจุดเดียว
+window._closeDatePickerPopup = () => {
+  const popup = document.getElementById('datePickerPopup');
+  if(popup) popup.style.display = 'none';
+  document.removeEventListener('click', window._dpOutsideClickHandler);
+  window._dpOutsideClickHandler = null;
+};
+
 window._toggleDatePicker = () => {
   const popup = document.getElementById('datePickerPopup');
   if(!popup) return;
   if(popup.style.display !== 'none'){
-    popup.style.display = 'none';
+    window._closeDatePickerPopup();
     return;
   }
   window._renderDatePickerCalendar(window._currentDay || (MOCK_DAILY.slice().sort((a,b)=>b.date.localeCompare(a.date))[0]?.date) || '');
   popup.style.display = 'block';
+  document.removeEventListener('click', window._dpOutsideClickHandler); // กันเหลือของรอบก่อนหน้า
   // ปิด popup เมื่อคลิกนอก
   setTimeout(() => {
-    const close = (e) => {
+    window._dpOutsideClickHandler = (e) => {
       if(!popup.contains(e.target) && e.target.id !== 'dailyDatePicker' && !e.target.closest('#dailyDatePicker')){
-        popup.style.display = 'none';
-        document.removeEventListener('click', close);
+        window._closeDatePickerPopup();
       }
     };
-    document.addEventListener('click', close);
+    document.addEventListener('click', window._dpOutsideClickHandler);
   }, 0);
 };
 
@@ -4654,8 +4788,7 @@ window._renderDatePickerCalendar = (selectedDate) => {
 };
 
 window._pickDate = (date) => {
-  const popup = document.getElementById('datePickerPopup');
-  if(popup) popup.style.display = 'none';
+  window._closeDatePickerPopup();
   window._dpViewYear = null; window._dpViewMonth = null;
   // อัปเดต label
   const lbl = document.getElementById('dailyDateLabel');
@@ -5230,7 +5363,10 @@ function _doExport(){
   const allEntries = [];
   filteredDays.forEach(day => {
     day.entries.forEach(e => {
-      const matchCode = code === 'all' || e.code === code || (code.length===1 && e.code.startsWith(code));
+      // [Fix R-8] เดิมเรียก .startsWith ตรง ๆ บน e.code ที่อาจเป็น undefined (แถวเก่าจากชีตบางแถวไม่มี
+      // ฟิลด์ code เลย ดู [FIX-A1]) เลือกกรองตาม "กลุ่ม" (Group) แล้วเจอแถวแบบนี้จะทำให้เกิด TypeError
+      // ทันทีในตัว handler ของปุ่ม Export กลายเป็นปุ่มไม่ทำงาน ไม่มีไฟล์ออกมา ไม่มี error ให้เห็นด้วย
+      const matchCode = code === 'all' || e.code === code || (code.length===1 && String(e.code||'').startsWith(code));
       const matchLoc = loc === 'all' || normLoc(e.location||'') === loc;
       if(matchCode && matchLoc){
         allEntries.push({...e, date: day.date, date_th: day.date_th, recorded_by: day.recorded_by});
