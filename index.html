@@ -496,7 +496,17 @@ tbody tr:hover {
   #globalSearchWrap { max-width: 160px !important; margin: 0 6px !important; }
   #globalSearchInput { font-size: 12px !important; padding: 5px 10px !important; }
   #globalSearchResults { min-width: 280px; }
-  #hdrCount { font-size: 10px; }
+
+  /* แถบหัวบนมือถือเดิมล้นออกนอกจอ ~141px ทำให้ปุ่ม "เปลี่ยนผู้ใช้" กดไม่ได้
+     และช่องค้นหาถูกบีบจนเหลือ 22px ใช้งานไม่ได้
+     จึงซ่อน 3 อย่างที่เป็นข้อความบอกข้อมูลเฉย ๆ (มีให้ดูที่อื่นอยู่แล้ว):
+       header h1   → ชื่อแอป (มีบนหน้าเข้าสู่ระบบและหัวรายงาน)
+       #hdrCount   → จำนวนวัตถุดิบ (มีบน Dashboard)
+       #userDisplay→ ชื่อผู้บันทึก (กดปุ่ม "เปลี่ยนผู้ใช้" แล้วเห็นชื่อเดิมในช่องกรอก)
+     เหลือไว้เฉพาะปุ่มที่ต้องกดจริง: ☰ / ค้นหา / 🔄 / รอส่ง / เปลี่ยนผู้ใช้ */
+  header h1     { display: none; }
+  #hdrCount     { display: none !important; }
+  #userDisplay  { display: none !important; }
 
   /* Layout */
   .layout { flex-direction: column; height: auto; min-height: calc(100vh - 52px); min-height: calc(100dvh - 52px); }
@@ -573,6 +583,12 @@ tbody tr:hover {
   /* Daily action buttons */
   .daily-btns-desktop { display: none !important; }
   .daily-btns-mobile { display: block !important; }
+}
+
+/* จอแคบมาก (เช่น iPhone SE) — ลดระยะขอบแถบหัวลง กันปุ่มหลุดออกนอกจอตอนมีป้าย "รอส่ง" ขึ้นพร้อมกัน */
+@media (max-width: 360px) {
+  header { padding-left: 8px; padding-right: 8px; gap: 6px; }
+  #globalSearchWrap { margin: 0 4px !important; }
 }
 
 /* Tablet */
@@ -652,6 +668,8 @@ tbody tr:hover {
     <div id="globalSearchResults" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;background:white;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.15);z-index:200;max-height:360px;overflow-y:auto;border:1px solid var(--rule)"></div>
   </div>
 
+  <button id="refreshBtn" type="button" onclick="refreshData()" title="โหลดข้อมูลใหม่จาก Google Sheet"
+    style="flex-shrink:0;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;font-size:12px;font-family:inherit;padding:2px 8px;border-radius:10px;cursor:pointer;margin-right:6px;line-height:1.6">🔄</button>
   <span id="pendingBadge" onclick="retryPending()" style="display:none;flex-shrink:0;font-size:11px;background:#8a3a1a;color:#fff;padding:2px 8px;border-radius:10px;cursor:pointer;margin-right:6px">⚠️ รอส่ง</span>
   <span id="hdrCount" style="flex-shrink:0;font-size:11px">กำลังโหลด...</span>
   <span id="userDisplay" style="display:none;font-size:11px;opacity:.7;font-family:'IBM Plex Mono',monospace;flex-shrink:0"></span>
@@ -943,6 +961,7 @@ function getBadge(code){
 // (ตัด ITEMS_DATA ที่ว่างเปล่าและไม่ถูกใช้แล้วออก — ตอนนี้อ่านรายการจาก db โดยตรง)
 
 async function loadFromSheet(){
+  let _loadOk = true;
   showLoading(true);
   showSpinner(true);
   const loader = document.getElementById('pageLoader');
@@ -1011,11 +1030,54 @@ async function loadFromSheet(){
     } else {
       showToast('❌ โหลดข้อมูลไม่สำเร็จ: ' + e.message, 'error');
     }
+    _loadOk = false;
     console.error('loadFromSheet error:', e);
   } finally {
     showLoading(false);
     showSpinner(false);
     if(loader){ loader.style.display = 'none'; }
+  }
+  return _loadOk;
+}
+
+// ===== ปุ่มโหลดข้อมูลใหม่จาก Google Sheet =====
+// เดิมแอปดึงข้อมูลจากชีตแค่ครั้งเดียวตอนเปิดหน้า คนที่เปิดค้างไว้ทั้งวันจึงไม่เห็นของที่เพื่อนบันทึก
+let _refreshBusy = false;
+
+// เช็คว่ามีจำนวนที่กรอกค้างไว้ในหน้า "อัปเดตสต็อก" แต่ยังไม่ได้กดบันทึกหรือไม่
+function _hasUnsavedSEInput(){
+  const st = window._seStocks;
+  if(!st) return false;
+  return Object.keys(st).some(k =>
+    (st[k] || []).some(row => row && String(row.qty == null ? '' : row.qty).trim() !== ''));
+}
+
+async function refreshData(){
+  if(_refreshBusy) return;
+  // กันค่าที่กรอกค้างไว้หายโดยไม่รู้ตัว (การโหลดใหม่จะล้างช่องกรอกทั้งหมด)
+  if(_hasUnsavedSEInput()){
+    const goOn = await customConfirm(
+      'มีจำนวนที่กรอกค้างไว้ในหน้า "อัปเดตสต็อก" และยังไม่ได้กดบันทึก\n' +
+      'ถ้าโหลดข้อมูลใหม่ ค่าที่กรอกไว้จะหายไป\n\n' +
+      'ต้องการโหลดข้อมูลใหม่ต่อหรือไม่?');
+    if(!goOn) return;
+  }
+  _refreshBusy = true;
+  const btn = document.getElementById('refreshBtn');
+  if(btn){ btn.disabled = true; btn.style.opacity = '.45'; btn.style.cursor = 'wait'; }
+  try {
+    const ok = await loadFromSheet();
+    // วาดหน้าเดิมใหม่ด้วยข้อมูลล่าสุด (ไม่เพิ่มประวัติย้อนกลับของเบราว์เซอร์)
+    try { showPage(window._currentPageName || 'dashboard', false); } catch(e){ console.error('refresh re-render:', e); }
+    if(ok){
+      const t = new Date();
+      const pad = n => String(n).padStart(2,'0');
+      if(btn) btn.title = 'โหลดข้อมูลใหม่จาก Google Sheet (ล่าสุด ' + pad(t.getHours()) + ':' + pad(t.getMinutes()) + ' น.)';
+      showToast('✅ โหลดข้อมูลล่าสุดจาก Sheet แล้ว');
+    }
+  } finally {
+    _refreshBusy = false;
+    if(btn){ btn.disabled = false; btn.style.opacity = ''; btn.style.cursor = 'pointer'; }
   }
 }
 
@@ -1101,6 +1163,7 @@ function closeSidebarOnMobile(){
 }
 
 function showPage(page, pushHistory=true){
+  window._currentPageName = page;   // ใช้ตอนกดปุ่มโหลดข้อมูลใหม่ จะได้กลับมาหน้าเดิม
   closeSidebarOnMobile();
   if(pushHistory) history.pushState({page}, '', '#' + page);
   // เดิมโชว์ loader ค้างไว้ 350ms ทั้งที่ render เสร็จทันที ทำให้รู้สึกช้ากว่าความจริง
