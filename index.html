@@ -469,7 +469,7 @@ tbody tr:hover {
   @page { margin: 15mm 12mm; size: A4; }
   body { background: white !important; font-size: 11px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   header, .sidebar, .topbar, .btn, .pagination, #toast, #menuToggle,
-  #sessionWarnBanner, #pageLoader, #onboardingOverlay, #exportDialog,
+  #sessionWarnBanner, #pageLoader, #onboardingOverlay, #exportDialog, #dataWarnBanner,
   #sidebarOverlay, #splashScreen, #breadcrumb, .daily-btns-desktop,
   .daily-btns-mobile, #dailyActionWrap { display: none !important; }
   [hidden] { display: none !important; }
@@ -737,6 +737,11 @@ tbody tr:hover {
   </nav>
   <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
   <div class="main">
+    <!-- [Fix V9-4] แถบเตือนแบบ "ค้างบนหน้า" แทน toast 3 วินาทีที่มักพลาด
+         ใช้กับ (1) สถานะเชื่อมต่อ Google Sheet ไม่ได้ — เดิมโชว์ที่ #hdrCount ซึ่งถูก CSS
+         ซ่อนทั้งหมดบนมือถือ ผู้ใช้หน้างานจึงไม่มีทางรู้ว่าข้อมูลบนจอไม่ใช่ของล่าสุด
+         (2) ปัญหาข้อมูลในชีตที่ทำให้ยอดสต็อกผิด (No. ว่าง / No. ซ้ำ / Code ว่าง) -->
+    <div id="dataWarnBanner" style="display:none"></div>
     <div id="breadcrumb" style="font-size:11px;color:#aaa;margin-bottom:12px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;min-height:16px"></div>
     <div id="mainContent"></div>
   </div>
@@ -762,6 +767,11 @@ tbody tr:hover {
       <button onclick="doLogin()" type="button"
         style="width:100%;padding:10px;background:#1d5fa8;color:white;border:none;border-radius:4px;font-size:13px;cursor:pointer;font-weight:500;font-family:inherit">
         เข้าสู่ระบบ
+      </button>
+      <!-- [Fix V9-9] ปุ่มยกเลิก แสดงเฉพาะตอนกด "เปลี่ยนผู้ใช้" (ไม่แสดงตอนเข้าครั้งแรก) -->
+      <button id="loginCancel" onclick="cancelChangeUser()" type="button"
+        style="display:none;width:100%;padding:9px;margin-top:8px;background:none;color:rgba(255,255,255,.55);border:1px solid rgba(255,255,255,.18);border-radius:4px;font-size:12.5px;cursor:pointer;font-family:inherit">
+        ยกเลิก
       </button>
     </div>
   </div>
@@ -845,6 +855,31 @@ let currentSortCol = 'no';   // default เรียงตาม No.
 let currentSortDir = 'asc';  // asc | desc
 const PAGE_SIZE = 20;
 
+// [Fix V9-3] รหัส No. ที่ซ้ำกันในชีต — ใช้ติด ⚠️ ข้างรหัสนั้นในทุกหน้าที่แสดงรายการ
+// เดิมเตือนแค่ toast 3 วินาทีตอนเปิดแอป ซึ่งบนมือถือมักพลาด แล้วยอดของสินค้าคู่นั้น
+// จะถูกนับซ้ำสองเท่าตลอดโดยไม่มีอะไรบอกอีกเลย
+let _dupNos = new Set();
+function _dupMark(no){
+  return (no && _dupNos.has(no))
+    ? ' <span title="รหัส No. นี้ซ้ำกับสินค้าอื่นในชีต ยอดสต็อกของทั้งสองรายการจะถูกนับซ้ำ กรุณาแก้ให้ No. ไม่ซ้ำในชีต" style="color:#b52a2a;cursor:help">⚠️</span>'
+    : '';
+}
+
+// [Fix V9-4] แถบเตือนค้างบนหน้า (ดูคำอธิบายที่ <div id="dataWarnBanner">)
+let _dataWarnings = [];   // ปัญหาข้อมูลในชีต — ตั้งค่าโดย loadFromSheet
+let _connWarning  = '';   // สถานะเชื่อมต่อ Google Sheet
+function _paintDataWarn(){
+  const el = document.getElementById('dataWarnBanner');
+  if(!el) return;
+  const all = (_connWarning ? [_connWarning] : []).concat(_dataWarnings);
+  if(!all.length){ el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = 'block';
+  el.innerHTML = all.map(w =>
+    '<div style="background:#fef5e7;border:1px solid #f5cba7;border-left:4px solid #e67e22;color:#8a5a00;'
+    + 'border-radius:6px;padding:9px 12px;margin-bottom:8px;font-size:12px;line-height:1.55">⚠️ ' + w + '</div>'
+  ).join('');
+}
+
 function showLoading(on){ const el = document.getElementById('loadingBar'); if(el) el.style.display = on?'block':'none'; }
 
 // วันที่ตามเวลาเครื่อง (เดิมใช้ toISOString ซึ่งเป็นเวลา UTC ทำให้บันทึกช่วง 00:00-07:00 น. ไปลงเป็นเมื่อวาน)
@@ -852,18 +887,32 @@ function showLoading(on){ const el = document.getElementById('loadingBar'); if(e
    เดิม: บันทึกลง localStorage แล้ว loadFromSheet เขียนทับด้วยข้อมูลจากชีต
         ของที่ยังไม่ขึ้นชีตจึงหายเงียบตอนเปิดใหม่
    ตอนนี้: จำวันที่ค้างไว้ ตอนโหลดจะไม่ทับวันเหล่านั้น และพยายามส่งซ้ำให้เอง  */
+// [Fix V8-1] ธง "วันนี้มีของในเครื่องที่ยังไม่ยืนยันว่าขึ้นชีตแล้ว" เก็บไว้ในหน่วยความจำด้วย
+// ไม่พึ่ง localStorage เพียงทางเดียว เพราะบางเบราว์เซอร์ (Safari โหมดส่วนตัว) เขียนไม่ได้เลย
+// แล้ว _getPending() จะคืน [] เสมอ ทำให้ตัวตัดสินใจใน _mergeServerDay เชื่อถือไม่ได้
+const _dayDirty = {};
+
+// [Fix V9-1] บั๊กสำคัญ: เดิม _getPending() อ่านจาก localStorage อย่างเดียว
+// ถ้าเบราว์เซอร์เขียน localStorage ไม่ได้ (Safari โหมดส่วนตัว / พื้นที่เต็ม / บล็อกคุกกี้)
+// _setPending() จะล้มเหลวเงียบ ๆ ใน catch แล้ว _getPending() คืน [] ตลอด ผลคือ
+//   • ป้าย "⚠️ รอส่ง" ไม่เคยขึ้น ผู้ใช้ไม่รู้ว่ามีของยังไม่ขึ้นชีต
+//   • retryPending() เห็นคิวว่าง จึงไม่ส่งซ้ำให้เลย
+//   • setInterval ทุก 90 วิ ที่เช็ค _getPending().length ก็ไม่ทำงาน
+//   → ข้อมูลที่ส่งไม่สำเร็จหายถาวรทันทีที่ปิดแท็บ โดยไม่มีคำเตือนใด ๆ
+// ตอนนี้รวมธงในหน่วยความจำ (_dayDirty) เข้ากับคิวเสมอ อย่างน้อยภายในเซสชันเดียวกัน
+// ระบบจะยังรู้ตัวและส่งซ้ำให้ได้ แม้เขียนลงเครื่องไม่ได้เลย
 function _getPending(){
-  try { const v = JSON.parse(localStorage.getItem('spm_pending_dates')||'[]'); return Array.isArray(v)?v:[]; }
-  catch(e){ return []; }
+  let ls = [];
+  try {
+    const v = JSON.parse(localStorage.getItem('spm_pending_dates')||'[]');
+    if(Array.isArray(v)) ls = v.filter(d => typeof d === 'string' && d);
+  } catch(e){}
+  return [...new Set([...ls, ...Object.keys(_dayDirty)])];
 }
 function _setPending(arr){
   try { localStorage.setItem('spm_pending_dates', JSON.stringify([...new Set(arr)])); } catch(e){}
   _paintPending();
 }
-// [Fix V8-1] ธง "วันนี้มีของในเครื่องที่ยังไม่ยืนยันว่าขึ้นชีตแล้ว" เก็บไว้ในหน่วยความจำด้วย
-// ไม่พึ่ง localStorage เพียงทางเดียว เพราะบางเบราว์เซอร์ (Safari โหมดส่วนตัว) เขียนไม่ได้เลย
-// แล้ว _getPending() จะคืน [] เสมอ ทำให้ตัวตัดสินใจใน _mergeServerDay เชื่อถือไม่ได้
-const _dayDirty = {};
 function _isDayDirty(date){ return !!_dayDirty[date] || _getPending().indexOf(date) >= 0; }
 
 function _markPending(date){ if(date){ _dayDirty[date] = true; _setPending(_getPending().concat([date])); } }
@@ -1143,14 +1192,19 @@ async function loadFromSheet(opts){
     const _hc = document.getElementById('hdrCount');
     if(_hc){ _hc.textContent = `วัตถุดิบทั้งหมด ${db.length} รายการ`; _hc.style.color = ''; }
 
+    // ===== ตรวจความถูกต้องของข้อมูลในชีต แล้วขึ้นเป็น "แถบเตือนค้างบนหน้า" =====
+    // [Fix V9-4] เดิมทั้ง 3 กรณีนี้เตือนด้วย toast ที่หายไปใน 3 วินาที บนมือถือมักพลาด
+    // ทั้งที่เป็นปัญหาที่ทำให้ "ตัวเลขสต็อกผิด" จนกว่าจะไปแก้ในชีต จึงต้องค้างไว้ให้เห็นตลอด
+    _dataWarnings = [];
+
     // [Fix V7-4] แถวที่ช่อง No. ว่างในชีตจะได้ no:'' เหมือนกันหมด ทำให้ getStockByNo('')
     // รวมสต็อกของสินค้าเหล่านั้นเป็นก้อนเดียว ตัวเลขจึงปนกันโดยไม่มีใครรู้ตัว
     const _noBlank = db.filter(r => !r.no);
     if(_noBlank.length){
       console.warn('แถวที่ No. ว่างในชีต:', _noBlank.map(r => 'แถว ' + r.row + ' — ' + r.desc));
-      setTimeout(() => showToast('⚠️ พบ ' + _noBlank.length + ' รายการที่ช่อง "No." ว่างในชีต (' +
-        _noBlank.slice(0,3).map(r => r.desc || 'ไม่มีชื่อ').join(', ') + (_noBlank.length>3?' ...':'') +
-        ') — สต็อกของรายการเหล่านี้จะถูกรวมปนกัน กรุณาใส่รหัส No. ในชีตให้ครบ', 'error'), 1200);
+      _dataWarnings.push('พบ <b>' + _noBlank.length + ' รายการที่ช่อง "No." ว่าง</b>ในชีต (' +
+        escHtml(_noBlank.slice(0,3).map(r => r.desc || 'ไม่มีชื่อ').join(', ')) + (_noBlank.length>3?' ...':'') +
+        ') — สต็อกของรายการเหล่านี้จะถูกรวมปนกันเป็นก้อนเดียว กรุณาใส่รหัส No. ในชีตให้ครบ');
     }
 
     // [Fix V8-15] แอปกัน No. ซ้ำครบแล้ว (saveNew/saveEdit) แต่ถ้ามีใครไปพิมพ์ No. ซ้ำ
@@ -1162,12 +1216,28 @@ async function loadFromSheet(opts){
       if(_noSeen[r.no]){ if(_noDup.indexOf(r.no) < 0) _noDup.push(r.no); }
       else _noSeen[r.no] = true;
     });
+    // [Fix V9-3] เก็บไว้ติด ⚠️ ข้างรหัสที่ซ้ำในทุกหน้าด้วย ไม่ใช่แค่เตือนตอนเปิดแอป
+    _dupNos = new Set(_noDup);
     if(_noDup.length){
       console.warn('No. ซ้ำกันในชีต:', _noDup.map(no => no + ' -> ' + db.filter(r=>r.no===no).map(r=>'แถว '+r.row+' '+r.desc).join(' | ')));
-      setTimeout(() => showToast('⚠️ พบรหัส No. ซ้ำกันในชีต ' + _noDup.length + ' รหัส (' +
-        _noDup.slice(0,3).join(', ') + (_noDup.length>3?' ...':'') +
-        ') — สต็อกของสินค้าเหล่านี้จะถูกนับรวมเป็นตัวเดียวกัน กรุณาแก้ให้ No. ไม่ซ้ำในชีต', 'error'), 2600);
+      _dataWarnings.push('พบ<b>รหัส No. ซ้ำกันในชีต ' + _noDup.length + ' รหัส</b> (' +
+        escHtml(_noDup.slice(0,5).join(', ')) + (_noDup.length>5?' ...':'') +
+        ') — <b>ยอดสต็อกของสินค้าคู่นั้นจะถูกนับซ้ำสองเท่าทุกหน้า</b> กรุณาแก้ให้ No. ไม่ซ้ำในชีต');
     }
+
+    // [Fix V9-2] แถวที่ช่อง Code ว่าง (หรือใส่ Code ที่ไม่มีใน CODE_MAP) เดิมไม่มีการเตือนเลย
+    // และสินค้าเหล่านั้นจะ "หายไป" จากหน้าสรุปสต็อกสินค้าและการ์ด Group ทั้งสามใบบน Dashboard
+    // ทั้งที่ยังถูกบวกอยู่ใน KPI "สต็อกรวม" — ทำให้ยอดรวมไม่ตรงกับผลรวมของการ์ดโดยไม่มีใครอธิบายได้
+    // (ตอนนี้เพิ่มกลุ่ม "อื่น ๆ" ให้เห็นในทุกหน้าแล้ว แต่ก็ยังควรเตือนให้ไปเติม Code ในชีต)
+    const _codeBad = db.filter(r => !CODE_MAP[r.code]);
+    if(_codeBad.length){
+      console.warn('แถวที่ Code ว่าง/ไม่รู้จักในชีต:', _codeBad.map(r => 'แถว ' + r.row + ' — ' + r.no + ' ' + r.desc));
+      _dataWarnings.push('พบ <b>' + _codeBad.length + ' รายการที่ช่อง "Code" ว่างหรือไม่รู้จัก</b> (' +
+        escHtml(_codeBad.slice(0,3).map(r => (r.no||'ไม่มี No.') + ' ' + (r.desc||'')).join(', ')) + (_codeBad.length>3?' ...':'') +
+        ') — ถูกจัดไว้ในกลุ่ม <b>"อื่น ๆ"</b> ชั่วคราว กรุณาใส่ Code ในชีตให้ครบ');
+    }
+    _connWarning = '';
+    _paintDataWarn();
 
     // [Fix V8-SPEED-2] เก็บรายการล่าสุดไว้ในเครื่อง ให้การเปิดหน้าครั้งต่อไปเห็นข้อมูลทันที
     // หน่วงไว้เล็กน้อย ให้วาดหน้าจอเสร็จก่อน การเขียน localStorage จะไม่ไปหนืดตอนเปิดแอป
@@ -1183,10 +1253,23 @@ async function loadFromSheet(opts){
     // [Fix V7-5] เดิมป้ายนี้ค้างที่ "กำลังโหลด..." ตลอดไปเมื่อเชื่อมต่อไม่ได้ ผู้ใช้ไม่รู้ว่าเกิดอะไรขึ้น
     const _hcErr = document.getElementById('hdrCount');
     if(_hcErr){ _hcErr.textContent = '⚠️ เชื่อมต่อ Sheet ไม่ได้ — กด 🔄 ลองใหม่'; _hcErr.style.color = '#ffb4b4'; }
+    // [Fix V9-4] #hdrCount ถูก CSS ซ่อนทั้งหมดบนมือถือ (display:none !important ที่ media 768px)
+    // ผู้ใช้หน้างานซึ่งใช้มือถือเป็นหลักจึงไม่เคยเห็นสถานะนี้เลย เหลือแค่ toast 3 วินาที
+    // ทำให้เข้าใจผิดว่าตัวเลขบนจอคือข้อมูลล่าสุดจากชีต — ย้ายมาขึ้นเป็นแถบค้างบนหน้า
+    // และทำให้ปุ่ม 🔄 (ปุ่มเดียวที่ไม่ถูกซ่อนบนมือถือ) เป็นสีแดงให้เห็นชัด
+    _connWarning = 'เชื่อมต่อ Google Sheet ไม่ได้ — <b>ข้อมูลที่เห็นอยู่อาจไม่ใช่ข้อมูลล่าสุด</b> ' +
+                   'และการบันทึกจะถูกเก็บไว้ในเครื่องก่อน กดปุ่ม 🔄 ด้านบนเพื่อลองโหลดใหม่';
+    _paintDataWarn();
+    const _rb = document.getElementById('refreshBtn');
+    if(_rb){ _rb.style.background = '#b52a2a'; _rb.style.borderColor = '#e06060'; }
     console.error('loadFromSheet error:', e);
   } finally {
     showLoading(false);
     if(loader){ loader.style.display = 'none'; }
+    if(_loadOk){
+      const _rb2 = document.getElementById('refreshBtn');
+      if(_rb2){ _rb2.style.background = 'rgba(255,255,255,.12)'; _rb2.style.borderColor = 'rgba(255,255,255,.25)'; }
+    }
   }
   return _loadOk;
 }
@@ -1268,12 +1351,25 @@ function _applySortToFiltered(filtered){
   });
 }
 
+// [Fix V9-2] ตัวกรองพิเศษสำหรับสินค้าที่ Code ว่างหรือไม่มีใน CODE_MAP
+// เดิมสินค้ากลุ่มนี้ไม่มีทางกรองดูได้เลยจากทุกหน้า
+const FILTER_OTHER = '__other';
+function _isOtherCode(code){ return !CODE_MAP[code]; }
+function _currentCatLabel(){
+  if(currentFilter === 'all' || !currentFilter) return 'ทั้งหมด';
+  if(currentFilter === FILTER_OTHER) return 'อื่น ๆ — ไม่มี Code / Code ไม่รู้จัก';
+  return currentFilter + ' — ' + (CODE_MAP[currentFilter] || '');
+}
+
 function getFiltered(){
   return db.filter(r => {
-    // รองรับ filter ทั้ง code เดี่ยว (A001) และ group letter (A, B, C)
+    const _code = r.code || '';
+    // รองรับ filter ทั้ง code เดี่ยว (A001), group letter (A, B, C) และกลุ่ม "อื่น ๆ"
     const matchCode = !currentFilter || currentFilter === 'all' ||
-      r.code === currentFilter ||
-      (currentFilter.length === 1 && r.code.startsWith(currentFilter));
+      (currentFilter === FILTER_OTHER
+        ? _isOtherCode(_code)
+        : (_code === currentFilter ||
+           (currentFilter.length === 1 && _code.startsWith(currentFilter))));
 
     const q = searchQ.trim().toLowerCase();
     if(!q) return matchCode;
@@ -1281,21 +1377,21 @@ function getFiltered(){
     // ถ้า query ตรงกับ group letter เป๊ะ (A, B, C) → filter by group เท่านั้น
     const groupLetters = ['a','b','c'];
     if(q.length === 1 && groupLetters.includes(q)){
-      return r.code.toLowerCase().startsWith(q);
+      return _code.toLowerCase().startsWith(q);
     }
 
     // ถ้า query ดูเหมือน code (เช่น B1, A001, B101) → เน้น code match
     // [BugFix #4] ใส่ matchCode && เพื่อให้ sidebar filter ยังมีผลอยู่เสมอ
     const looksLikeCode = /^[a-z]\d/i.test(q);
     if(looksLikeCode){
-      return matchCode && (r.code.toLowerCase().startsWith(q) || r.code.toLowerCase().includes(q));
+      return matchCode && (_code.toLowerCase().startsWith(q) || _code.toLowerCase().includes(q));
     }
 
     // search ทั่วไป
     return matchCode && (
-      r.no.toLowerCase().includes(q) ||
-      r.desc.toLowerCase().includes(q) ||
-      r.code.toLowerCase().includes(q)
+      (r.no||'').toLowerCase().includes(q) ||
+      (r.desc||'').toLowerCase().includes(q) ||
+      _code.toLowerCase().includes(q)
     );
   });
 }
@@ -1371,7 +1467,7 @@ function onSearchInput(val){
   const total = filtered.length;
   const pages = Math.ceil(total/PAGE_SIZE)||1;
   const slice = _applySortToFiltered(filtered).slice(0, PAGE_SIZE);   // เดิมไม่เรียง ทำให้หน้า 1 กับหน้า 2 ลำดับไม่ตรงกัน
-  const catLabel = currentFilter === 'all' ? 'ทั้งหมด' : currentFilter + ' — ' + (CODE_MAP[currentFilter]||'');
+  const catLabel = _currentCatLabel();   // [Fix V9-2]
   const sub = document.getElementById('listSubtitle');
   if(sub) sub.textContent = catLabel + ' — แสดง ' + slice.length + ' จาก ' + total + ' รายการ';
   renderListTable(slice);
@@ -1397,8 +1493,10 @@ function filterBy(code){
   const _si = document.getElementById('searchInput');
   if(_si) _si.value = '';   // เดิมล้างแต่ตัวแปร ช่องยังค้างข้อความเดิมทำให้สับสน
   if(code && code !== 'all'){
-    const name = CODE_MAP[code] || code;
-    _updateBreadcrumb('list', code + ' — ' + name);
+    // [Fix V9-2] รองรับกลุ่ม "อื่น ๆ" ที่ไม่มีชื่อใน CODE_MAP
+    _updateBreadcrumb('list', code === FILTER_OTHER
+      ? 'อื่น ๆ / ไม่มี Code'
+      : (code + ' — ' + (CODE_MAP[code] || code)));
   }
   document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
   document.querySelectorAll('.sidebar a').forEach(a => {
@@ -1415,18 +1513,30 @@ function renderDashboard(){
   const groupB = ['B101','B102','B103'];
   const groupC = ['C203','C204','C209'];
 
+  // [Fix V9-2] กลุ่ม "อื่น ๆ" = สินค้าที่ Code ว่าง หรือใส่ Code ที่ไม่มีใน CODE_MAP
+  // เดิมสินค้าเหล่านี้ไม่ถูกนับในการ์ด Group ใดเลย แต่ถูกบวกใน KPI "สต็อกรวม" ด้านบน
+  // ทำให้ยอดรวมไม่ตรงกับผลรวมของการ์ดทั้งสามใบ โดยไม่มีอะไรอธิบายส่วนต่างเลย
+  const otherRows = db.filter(r => _isOtherCode(r.code));
+
   const countA = db.filter(r => groupA.includes(r.code)).length;
   const countB = db.filter(r => groupB.includes(r.code)).length;
   const countC = db.filter(r => groupC.includes(r.code)).length;
+  const countO = otherRows.length;
   const total  = db.length;
 
   const pctA = total ? Math.round(countA/total*100) : 0;
   const pctB = total ? Math.round(countB/total*100) : 0;
   const pctC = total ? Math.round(countC/total*100) : 0;
+  const pctO = total ? Math.round(countO/total*100) : 0;
 
   const detailA = groupA.map(code => ({code, name: CODE_MAP[code]||'', count: db.filter(r=>r.code===code).length})).filter(d => d.count > 0);
   const detailB = groupB.map(code => ({code, name: CODE_MAP[code]||'', count: db.filter(r=>r.code===code).length})).filter(d => d.count > 0);
   const detailC = groupC.map(code => ({code, name: CODE_MAP[code]||'', count: db.filter(r=>r.code===code).length})).filter(d => d.count > 0);
+  const detailO = [...new Set(otherRows.map(r => r.code || ''))].map(code => ({
+    code,
+    name: code ? 'Code ไม่รู้จัก' : 'ไม่ได้ระบุ Code ในชีต',
+    count: otherRows.filter(r => (r.code||'') === code).length,
+  })).filter(d => d.count > 0);
 
   // คำนวณ stock รวมทั้งหมด
   // [Fix 1.3] ใช้ getTotalKgByNo ตัวเดียวกับทุกหน้า จะได้ไม่มีทางคิดต่างกันอีก
@@ -1459,10 +1569,12 @@ function renderDashboard(){
 
   const barRow = (item, color) => {
     const pct = total ? Math.round(item.count/total*100) : 0;
+    // [Fix V9-2] Code ว่างกรองด้วยค่าว่างไม่ได้ (filterBy('') = แสดงทั้งหมด) ต้องใช้ตัวกรองกลุ่ม "อื่น ๆ"
+    const _f = item.code || FILTER_OTHER;
     return `
-    <div style="margin-bottom:10px;cursor:pointer" onclick="showPage('list');filterBy('${item.code}')">
+    <div style="margin-bottom:10px;cursor:pointer" onclick="showPage('list');filterBy('${escJs(_f)}')">
       <div style="display:flex;justify-content:space-between;margin-bottom:3px">
-        <span style="font-size:12px;font-weight:500;color:#2c3e50">${item.code} — ${item.name}</span>
+        <span style="font-size:12px;font-weight:500;color:#2c3e50">${escHtml(item.code) || '(ไม่มี Code)'} — ${escHtml(item.name)}</span>
         <span style="font-size:12px;color:#777">${item.count} รายการ</span>
       </div>
       <div style="background:#eee;border-radius:4px;height:7px;overflow:hidden">
@@ -1491,13 +1603,16 @@ function renderDashboard(){
   const unkA = stockUnknownCount(groupA);
   const unkB = stockUnknownCount(groupB);
   const unkC = stockUnknownCount(groupC);
+  // [Fix V9-2] ยอดของกลุ่ม "อื่น ๆ" — คิดจากแถวโดยตรง เพราะกลุ่มนี้ไม่ได้อ้างอิงรายการ Code คงที่
+  let kgO = 0, unkO = 0;
+  otherRows.forEach(r => { kgO = r2(kgO + getTotalKgByNo(r.no)); unkO += _unknownKgCount(r.no); });
 
-  const groupCard = (letter, label, count, pct, color, colorLight, details, kg, unk) => `
+  const groupCard = (letter, label, count, pct, color, colorLight, details, kg, unk, filterToken) => `
     <div class="hover-card" style="background:white;border-radius:12px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.08);flex:1;min-width:280px;border-top:3px solid ${color}">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
         <div>
           <div style="font-size:11px;color:#aaa;font-weight:600;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Group ${letter}</div>
-          <div style="font-size:15px;font-weight:700;color:#1a2535">${label}</div>
+          <div style="font-size:15px;font-weight:700;color:#1a2535">${escHtml(label)}</div>
         </div>
         <div style="text-align:right">
           <div style="font-size:32px;font-weight:800;color:${color};line-height:1">${count}</div>
@@ -1516,7 +1631,7 @@ function renderDashboard(){
         ${details.map(d => barRow(d, color)).join('')}
       </div>
       <div style="margin-top:10px;text-align:right">
-        <button class="btn btn-sm btn-outline" onclick="showPage('list');filterByGroup('${letter}')">ดูทั้งหมด →</button>
+        <button class="btn btn-sm btn-outline" onclick="showPage('list');filterByGroup('${escJs(filterToken || letter)}')">ดูทั้งหมด →</button>
       </div>
     </div>`;
 
@@ -1563,9 +1678,12 @@ function renderDashboard(){
 
     <!-- Group Cards -->
     <div class="dash-cards" style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start;margin-bottom:20px">
-      <div class="dash-card" style="flex:1;min-width:280px">${groupCard('A','วัตถุดิบหลัก',countA,pctA,'#2874a6','#eaf4fb',detailA,kgA,unkA)}</div>
-      <div class="dash-card" style="flex:1;min-width:280px">${groupCard('B','Semi / WIP',countB,pctB,'#1e8449','#eafaf1',detailB,kgB,unkB)}</div>
-      <div class="dash-card" style="flex:1;min-width:280px">${groupCard('C','NC / Rework',countC,pctC,'#6c3483','#f5eef8',detailC,kgC,unkC)}</div>
+      <div class="dash-card" style="flex:1;min-width:280px">${groupCard('A','วัตถุดิบหลัก',countA,pctA,'#2874a6','#eaf4fb',detailA,kgA,unkA,'A')}</div>
+      <div class="dash-card" style="flex:1;min-width:280px">${groupCard('B','Semi / WIP',countB,pctB,'#1e8449','#eafaf1',detailB,kgB,unkB,'B')}</div>
+      <div class="dash-card" style="flex:1;min-width:280px">${groupCard('C','NC / Rework',countC,pctC,'#6c3483','#f5eef8',detailC,kgC,unkC,'C')}</div>
+      <!-- [Fix V9-2] แสดงเฉพาะตอนที่มีสินค้าที่ Code ว่าง/ไม่รู้จักจริง เพื่อให้ผลรวมของการ์ดทุกใบ
+           เท่ากับ KPI "สต็อกรวม" ด้านบนเสมอ ไม่มีของตกหล่นโดยไม่มีใครเห็นอีก -->
+      ${countO ? `<div class="dash-card" style="flex:1;min-width:280px;max-width:520px">${groupCard('อื่น ๆ','ไม่มี Code / Code ไม่รู้จัก',countO,pctO,'#8a5a00','#fef5e7',detailO,kgO,unkO,FILTER_OTHER)}</div>` : ''}
     </div>
 
     <!-- Recent Activity -->
@@ -1594,7 +1712,7 @@ function renderList(){
   if(currentPage>pages) currentPage=pages;
   const sorted = _applySortToFiltered(filtered);
   const slice = sorted.slice((currentPage-1)*PAGE_SIZE, currentPage*PAGE_SIZE);
-  const catLabel = currentFilter === 'all' ? 'ทั้งหมด' : currentFilter + ' — ' + (CODE_MAP[currentFilter]||'');
+  const catLabel = _currentCatLabel();   // [Fix V9-2]
 
   const hasSearch = document.getElementById('searchInput');
   if(!hasSearch){
@@ -1652,7 +1770,7 @@ function renderListTable(slice){
         (img ? '<div>'+img+'</div>' : '')+
         '<div style="flex:1;min-width:0">'+
           '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'+
-            '<span style="font-family:monospace;font-size:12px;font-weight:600;color:var(--blue)">'+escHtml(r.no)+'</span>'+
+            '<span style="font-family:monospace;font-size:12px;font-weight:600;color:var(--blue)">'+escHtml(r.no)+_dupMark(r.no)+'</span>'+
             getBadge(r.code)+
           '</div>'+
           '<div style="font-size:13px;font-weight:600;color:var(--ink);margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(r.desc)+'</div>'+
@@ -1690,7 +1808,7 @@ function renderListTable(slice){
       return '<tr oncontextmenu="showQuickAction(event,'+r.id+')" style="cursor:context-menu">' +
         '<td>'+img+'</td>' +
         '<td>'+getBadge(r.code)+'</td>' +
-        '<td style="font-weight:500;font-family:monospace">'+(escHtml(r.no)||'-')+'</td>' +
+        '<td style="font-weight:500;font-family:monospace">'+(escHtml(r.no)||'-')+_dupMark(r.no)+'</td>' +
         '<td>'+(escHtml(r.desc)||'-')+'</td>' +
         '<td>'+(escHtml(r.pkg)||'-')+'</td>' +
         '<td>'+(escHtml(r.col2)||'-')+'</td>' +
@@ -1875,8 +1993,12 @@ function toggleCol2(pkg){
   // เบาท์และถัง ไม่ต้องกรอกน้ำหนักต่อหน่วย
   const noWeightTypes = ['bulk','BULK','drum',''];
   if(noWeightTypes.includes(pkg)){
+    // [Fix V9-5] เดิมบรรทัดถัดไปคือ f_col2.value = '' ซึ่ง "ล้างค่า" ไม่ใช่แค่ซ่อนช่อง
+    // พอกดบันทึก saveEdit จะเขียนค่าว่างทับ นน./หน่วย ลงชีตทันที ผลคือประวัติเก่าทุกแถว
+    // ของสินค้านั้นที่ไม่มี kgPerUnit ติดมาด้วย (ข้อมูลก่อนมีฟีเจอร์นี้) เปลี่ยนจาก
+    // "แปลงเป็น กก. ได้" เป็น "แปลงไม่ได้" ทันที ยอด กก. หายจากทุกหน้าโดยไม่มีคำเตือน
+    // ตอนนี้แค่ซ่อนช่อง ค่าเดิมยังอยู่ ถ้าจะล้างจริงผู้ใช้ลบในช่องเองได้
     col2Group.style.display = 'none';
-    document.getElementById('f_col2').value = '';
   } else {
     // กระสอบ ต้องกรอกน้ำหนักต่อหน่วย
     col2Group.style.display = 'flex';
@@ -2293,7 +2415,7 @@ function showDetail(id){
     </div>`:''}
     <dl class="detail-grid">
       <dt>Code</dt><dd>${getBadge(r.code)} ${CODE_MAP[r.code]||''}</dd>
-      <dt>No.</dt><dd style="font-family:monospace">${escHtml(r.no)||'-'}</dd>
+      <dt>No.</dt><dd style="font-family:monospace">${escHtml(r.no)||'-'}${_dupMark(r.no)}${_dupNos.has(r.no)?'<div style="font-size:11px;color:#b52a2a;font-family:inherit;margin-top:2px">รหัสนี้ซ้ำกับสินค้าอื่นในชีต — ยอดสต็อกด้านล่างถูกนับรวมของทั้งสองรายการ</div>':''}</dd>
       <dt>Description</dt><dd>${escHtml(r.desc)||'-'}</dd>
       <dt>บรรจุ</dt><dd>${escHtml(r.pkg)||'-'} ${r.col2?'('+escHtml(r.col2)+' กก./'+escHtml(r.pkg)+')':''}</dd>
       <dt>เงื่อนไขซื้อขาย</dt><dd>${escHtml(r.cond)||'-'}</dd>
@@ -2667,7 +2789,9 @@ function renderStockEdit(container){
     filtered = [...filtered].sort((a,b) => {
       const ai = window._seRecentIds.indexOf(a.id);
       const bi = window._seRecentIds.indexOf(b.id);
-      if(ai > -1 && bi > -1) return bi - ai;
+      // [Fix V9-6] _seRecentIds เก็บแบบ [ล่าสุด, ...เก่ากว่า] (index 0 = ล่าสุด)
+      // เดิมคืน bi - ai ซึ่งดันตัวที่ "เก่าที่สุด" ในกลุ่มเพิ่งบันทึกขึ้นบนสุด — เรียงกลับด้าน
+      if(ai > -1 && bi > -1) return ai - bi;
       if(ai > -1) return -1;
       if(bi > -1) return 1;
       return 0;
@@ -2813,17 +2937,23 @@ function updateSE(itemId, rowIdx, field, val){
 }
 
 // เปลี่ยนหน่วย → โชว์/ซ่อนช่องกรอกน้ำหนักต่อหน่วยให้เหมาะกับหน่วยที่เลือก แล้วอัปเดตยอดคำนวณสด
+// [Fix V9-7] หน่วย "ถัง" และ "เบาท์" เดิม convertToKg คืน null ตายตัว และหน้าจอไม่มีช่องให้กรอก
+// น้ำหนักต่อหน่วยเลย ยอดของหน่วยเหล่านี้จึงถูกตัดออกจากทุกผลรวมตลอดไป (ขึ้นแค่ ⚠️ ให้ดู)
+// ความจริง convertToKg รองรับ overrideWpu อยู่แล้ว (เช็คก่อน wpuMap) แค่เปิดช่องให้กรอกก็ใช้ได้ทันที
+const _WPU_UNITS = {'กระสอบ':'กก./กระสอบ', 'ถัง':'กก./ถัง', 'เบาท์':'กก./เบาท์'};
 function _seRowUnitChanged(itemId, i, unit){
   updateSE(itemId, i, 'unit', unit);
   const extra = document.getElementById('se_extra_'+itemId+'_'+i);
   if(!extra) return;
   const item = db.find(x=>x.id===itemId);
-  if(unit === 'กระสอบ'){
-    const prefill = item && item.col2 ? item.col2 : '';
+  if(_WPU_UNITS[unit]){
+    // เติมค่าเริ่มต้นจาก นน./หน่วย ของสินค้าให้เฉพาะกระสอบ (ถัง/เบาท์ ไม่มีค่ามาตรฐาน)
+    const prefill = (unit === 'กระสอบ' && item && item.col2) ? item.col2 : '';
     updateSE(itemId, i, 'kgPerUnit', prefill||'');
-    extra.innerHTML = '<label style="font-size:11px;color:#888;display:flex;align-items:center;gap:5px">กก./กระสอบ:'
+    extra.innerHTML = '<label style="font-size:11px;color:#888;display:flex;align-items:center;gap:5px">'+escHtml(_WPU_UNITS[unit])+':'
       + '<input type="number" min="0" placeholder="เช่น 50" value="'+escHtml(String(prefill||''))+'" style="width:90px;padding:4px 7px;border:1px solid var(--rule);border-radius:4px;font-size:12px"'
-      + ' oninput="updateSE('+itemId+','+i+',\'kgPerUnit\',this.value);_updateSERowPreview('+itemId+','+i+')"></label>';
+      + ' oninput="updateSE('+itemId+','+i+',\'kgPerUnit\',this.value);_updateSERowPreview('+itemId+','+i+')"></label>'
+      + (unit === 'กระสอบ' ? '' : '<span style="font-size:11px;color:#b9770e;margin-left:6px">ไม่กรอกก็บันทึกได้ แต่ยอดนี้จะไม่ถูกรวมเป็น กก.</span>');
   } else if(unit === 'bigbag'){
     updateSE(itemId, i, 'kgPerUnit', '1000');
     extra.innerHTML = '<span style="font-size:11px;color:#888">≈ 1,000 กก./ใบ (ค่ามาตรฐาน)</span>';
@@ -2847,8 +2977,8 @@ function _updateSERowPreview(itemId, i){
 }
 
 function _seExtraHtml(itemId, i, s){
-  if(s.unit === 'กระสอบ'){
-    return '<label style="font-size:11px;color:#888;display:flex;align-items:center;gap:5px">กก./กระสอบ:'
+  if(_WPU_UNITS[s.unit]){   // [Fix V9-7] กระสอบ / ถัง / เบาท์
+    return '<label style="font-size:11px;color:#888;display:flex;align-items:center;gap:5px">'+escHtml(_WPU_UNITS[s.unit])+':'
       + '<input type="number" min="0" placeholder="เช่น 50" value="'+escHtml(String(s.kgPerUnit||''))+'" style="width:90px;padding:4px 7px;border:1px solid var(--rule);border-radius:4px;font-size:12px"'
       + ' oninput="updateSE('+itemId+','+i+',\'kgPerUnit\',this.value);_updateSERowPreview('+itemId+','+i+')"></label>';
   }
@@ -3222,25 +3352,33 @@ function renderStockView(container){
   }
 
   // หา code ที่มีสต็อก
-  const availCodes = [...new Set(withStock.map(r => r.code))];
+  // [Fix V9-2] normalize เป็นสตริงเสมอ — แถวที่ไม่มีฟิลด์ code เลยจะได้ '' ไม่ใช่ undefined
+  const availCodes = [...new Set(withStock.map(r => r.code || ''))];
   let selectedSVCode = availCodes[0] || 'all';
 
+  // id ของปุ่มต้องใช้ได้กับ Code ว่างด้วย (เดิมจะกลายเป็น "svbtn_" ซ้ำกันหมด)
+  const _svBtnId = (c) => 'svbtn_' + (c ? String(c).replace(/[^A-Za-z0-9]/g,'') : '__none');
+  const _svCodeName = (c) => CODE_MAP[c] || (c ? 'Code ไม่รู้จัก' : 'ไม่ได้ระบุ Code ในชีต');
+
   const renderCodeBtns = () => {
+    // [Fix V9-2] เดิมจัดกลุ่มด้วย startsWith('A'|'B'|'C') เท่านั้น สินค้าที่ Code ว่างหรือ
+    // ขึ้นต้นด้วยตัวอื่นจึงไม่มีปุ่มใดรองรับ = "หายไปจากหน้านี้ทั้งหมด" ทั้งที่มีสต็อกอยู่จริง
     const groups = {
-      'A': availCodes.filter(c => c.startsWith('A')),
-      'B': availCodes.filter(c => c.startsWith('B')),
-      'C': availCodes.filter(c => c.startsWith('C')),
+      'A': availCodes.filter(c => String(c).startsWith('A')),
+      'B': availCodes.filter(c => String(c).startsWith('B')),
+      'C': availCodes.filter(c => String(c).startsWith('C')),
+      'อื่น ๆ': availCodes.filter(c => !/^[ABC]/.test(String(c))),
     };
     return Object.entries(groups).filter(([,codes])=>codes.length).map(([grp, codes]) => `
       <div style="margin-bottom:6px">
-        <span style="font-size:11px;color:#888;margin-right:6px">Group ${grp}</span>
+        <span style="font-size:11px;color:#888;margin-right:6px">Group ${escHtml(grp)}</span>
         ${codes.map(code => `
-          <button onclick="window._selectSVCode('${code}')" id="svbtn_${code}"
+          <button onclick="window._selectSVCode('${escJs(code)}')" id="${_svBtnId(code)}"
             style="padding:5px 12px;margin:2px;border-radius:6px;border:1px solid ${code===selectedSVCode?'#1a5276':'#d5d8dc'};
             background:${code===selectedSVCode?'#1a5276':'white'};color:${code===selectedSVCode?'white':'#555'};
             cursor:pointer;font-size:12px;font-weight:${code===selectedSVCode?'700':'400'}">
-            ${code}
-            <span style="opacity:.7;font-size:11px;margin-left:4px">(${withStock.filter(r=>r.code===code).length})</span>
+            ${escHtml(code) || '(ไม่มี Code)'}
+            <span style="opacity:.7;font-size:11px;margin-left:4px">(${withStock.filter(r=>(r.code||'')===code).length})</span>
           </button>`).join('')}
       </div>`).join('');
   };
@@ -3248,13 +3386,13 @@ function renderStockView(container){
   // renderCardsFiltered: กรองตาม code และคำค้นหา
   const renderCardsFiltered = (code, q) => {
     const filtered = withStock.filter(r =>
-      r.code === code &&
-      (!q || r.desc.toLowerCase().includes(q.toLowerCase())
-          || r.no.toLowerCase().includes(q.toLowerCase()))
+      (r.code || '') === code &&
+      (!q || (r.desc||'').toLowerCase().includes(q.toLowerCase())
+          || (r.no||'').toLowerCase().includes(q.toLowerCase()))
     );
     if(!filtered.length) return emptyState('🔍','ไม่พบข้อมูลสต็อก','ลองค้นหาด้วยคำอื่น หรือเลือก Group ใหม่');
 
-    const codeName = CODE_MAP[code] || code;
+    const codeName = _svCodeName(code);
     const itemCards = filtered.map(r => {
       const validStocks = getStockByNoAndLoc(r.no);
       // [Fix 1.3] จัดกลุ่มด้วย unit + kgPerUnit ไม่งั้นล็อตที่น้ำหนักต่อหน่วยต่างกันจะถูกยุบรวมแล้วคิด กก. ผิด
@@ -3269,8 +3407,8 @@ function renderStockView(container){
       <div style="background:white;border-radius:6px;padding:12px 14px;margin-bottom:8px;border:1px solid #e8f0f8">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
           <div>
-            <span style="font-weight:600;font-size:13px;color:#1a5276">${escHtml(r.desc)||r.no}</span>
-            <span style="color:#aaa;font-size:11px;margin-left:6px;font-family:monospace">${escHtml(r.no)}</span>
+            <span style="font-weight:600;font-size:13px;color:#1a5276">${escHtml(r.desc)||escHtml(r.no)}</span>
+            <span style="color:#aaa;font-size:11px;margin-left:6px;font-family:monospace">${escHtml(r.no)}${_dupMark(r.no)}</span>
           </div>
           <div style="display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end">
             ${Object.values(totalByUnit).map(t=>{
@@ -3298,8 +3436,8 @@ function renderStockView(container){
 
     return `
     <div style="background:#1a5276;color:white;padding:8px 14px;border-radius:8px 8px 0 0;margin-bottom:0">
-      <span style="font-weight:700">${code}</span>
-      <span style="opacity:.8;margin-left:6px">— ${codeName}</span>
+      <span style="font-weight:700">${escHtml(code) || '(ไม่มี Code)'}</span>
+      <span style="opacity:.8;margin-left:6px">— ${escHtml(codeName)}</span>
       <span style="margin-left:auto;float:right;background:rgba(255,255,255,.2);padding:1px 8px;border-radius:10px;font-size:11px">${filtered.length} รายการ</span>
     </div>
     <div style="border:1px solid #d6eaf8;border-top:none;border-radius:0 0 8px 8px;padding:10px;background:#f8fbff">
@@ -3326,7 +3464,7 @@ function renderStockView(container){
     const searchInp = document.getElementById('svSearchInput');
     document.getElementById('svWrap').innerHTML = renderCardsFiltered(code, searchInp ? searchInp.value : '');
     availCodes.forEach(c => {
-      const btn = document.getElementById('svbtn_' + c);
+      const btn = document.getElementById(_svBtnId(c));
       if(btn){
         btn.style.background = c===code ? '#1a5276' : 'white';
         btn.style.color = c===code ? 'white' : '#555';
@@ -3456,6 +3594,19 @@ function _setDailyContent(html){
   const el = document.getElementById('dailyContent');
   if(el) el.innerHTML = html;
   _applyMobileFixes();
+}
+
+// [Fix V9-10] วาดหน้าประวัติใหม่หลังการลบ — ถ้าลบแถวสุดท้ายของวันจนวันนั้นหายไปจากระบบแล้ว
+// การเรียก _redrawDaily(date) เดิมจะได้หน้า "ไม่พบข้อมูลวันที่นี้" ค้างอยู่ พร้อมป้ายวันที่
+// ที่ถูกลบไปแล้วบนปุ่มเลือกวัน ผู้ใช้ต้องกดเลือกวันใหม่เองทุกครั้ง
+// ตอนนี้ถ้าวันนั้นไม่เหลืออยู่แล้ว จะวาดหน้าประวัติใหม่ทั้งหน้า (renderDaily เลือกวันล่าสุดให้เอง)
+function _redrawDailyAfterDelete(date){
+  if(MOCK_DAILY.some(d => d && d.date === date)){ _redrawDaily(date); return; }
+  const main = document.getElementById('mainContent');
+  if(main && document.getElementById('dailyContent')){
+    window._currentDay = null;
+    try { renderDaily(main); } catch(e){ console.error('renderDaily after delete:', e); }
+  }
 }
 
 function renderDaily(container){
@@ -4175,7 +4326,7 @@ async function deleteDailyEntry(date, entryIdx){
   _clearDailyIndex();
   _saveDailyData();
   // [Fix 2.10] วาดหน้าใหม่ทันที ปุ่มจะได้ผูก index ชุดใหม่ก่อนที่ผู้ใช้จะกดอะไรต่อ
-  _redrawDaily(date);
+  _redrawDailyAfterDelete(date);   // [Fix V9-10]
 
   // sync ไป Google Sheet — ส่ง entries ที่เหลือของวันนั้นไปเขียนทับใหม่
   try {
@@ -4219,7 +4370,7 @@ async function deleteDailyEntry(date, entryIdx){
   } finally {
     // [FIX-A8] เดิมมี _saveDailyData()+_redrawDaily() ซ้ำอีกรอบนอก try
     // ทำให้หน้าถูกวาดสองครั้ง (กระพริบ) และปุ่ม Undo ในกล่องข้อความหายไป
-    _redrawDaily(date);
+    _redrawDailyAfterDelete(date);   // [Fix V9-10]
   }
   });
   } finally { _dailyMutating = false; }   // [Fix V8-5]
@@ -4300,10 +4451,10 @@ function _editEntryUnitChanged(unit, isInitial){
   const wrap = document.getElementById('edit_wpu_wrap');
   const extra = document.getElementById('edit_wpu_extra');
   if(!wrap || !extra) return;
-  if(unit === 'กระสอบ'){
+  if(_WPU_UNITS[unit]){   // [Fix V9-7] กระสอบ / ถัง / เบาท์
     wrap.style.display = 'flex';
     const prefill = window._editEntryKgPerUnit || '';
-    extra.innerHTML = '<label style="font-size:12px;color:#7a8fa6;display:flex;align-items:center;gap:6px">กก./กระสอบ:'
+    extra.innerHTML = '<label style="font-size:12px;color:#7a8fa6;display:flex;align-items:center;gap:6px">'+escHtml(_WPU_UNITS[unit])+':'
       + '<input type="number" min="0" placeholder="เช่น 50" id="edit_wpu" value="'+escHtml(String(prefill||''))+'" style="width:100px;padding:6px 9px;border:1px solid var(--rule);border-radius:4px;font-size:13px"'
       + ' oninput="window._editEntryKgPerUnit=this.value;_updateEditEntryPreview()"></label>';
   } else if(unit === 'bigbag'){
@@ -4471,7 +4622,8 @@ async function saveEditDailyEntry(date, realIdx){
       storage:  document.getElementById('edit_storage').value.trim(),
       qty:      editQty,
       unit:     editUnit,
-      kgPerUnit: (editUnit === 'กระสอบ' || editUnit === 'bigbag') ? (window._editEntryKgPerUnit||'') : '',
+      // [Fix V9-7] เดิมทิ้ง kgPerUnit ของหน่วย ถัง/เบาท์ ทำให้ค่าที่เพิ่งกรอกหายทันทีที่กดบันทึก
+      kgPerUnit: (_WPU_UNITS[editUnit] || editUnit === 'bigbag') ? (window._editEntryKgPerUnit||'') : '',
       note:     document.getElementById('edit_note').value.trim(),
       images:   window._editEntryImgs || [],
     };
@@ -4681,8 +4833,21 @@ async function changeUser(){
   if(await customConfirm('เปลี่ยนชื่อผู้ใช้งาน?')){
     document.getElementById('loginOverlay').style.display = 'flex';
     document.getElementById('loginName').value = currentUser;
+    // [Fix V9-9] เดิมหน้า login ไม่มีทางออกเลย ถ้ากดปุ่มนี้พลาดจะติดอยู่กับหน้าเต็มจอ
+    // จนกว่าจะกรอกชื่อแล้วกดเข้าสู่ระบบ (doLogin ไม่ยอมให้ผ่านถ้าชื่อว่าง)
+    const c = document.getElementById('loginCancel');
+    if(c) c.style.display = currentUser ? 'block' : 'none';
     setTimeout(()=>document.getElementById('loginName').focus(),100);
   }
+}
+
+// [Fix V9-9] ปิดหน้า login โดยไม่เปลี่ยนชื่อ (ใช้ได้เฉพาะตอนที่เคย login ไว้แล้ว)
+function cancelChangeUser(){
+  if(!currentUser) return;
+  const overlay = document.getElementById('loginOverlay');
+  if(overlay) overlay.style.display = 'none';
+  const inp = document.getElementById('loginName');
+  if(inp) inp.style.borderColor = 'rgba(255,255,255,.15)';
 }
 
 function doLogin(){
@@ -4698,10 +4863,14 @@ function doLogin(){
   const _cub = document.getElementById('changeUserBtn');   // [Fix 2.14]
   if(_cub) _cub.style.display = 'inline-block';
   // render หน้าแรกหลัง login
+  // [Fix V9-8] เดิมเรียก renderDashboard() ตรง ๆ ไม่ผ่าน showPage() ผลคือ
+  //   • sidebar ยังไฮไลต์ "รายการวัตถุดิบ" (class="active" ที่ติดมากับ HTML) ทั้งที่แสดง Dashboard
+  //   • breadcrumb ว่างเปล่า
+  //   • window._currentPageName ไม่ถูกตั้ง ทำให้ปุ่ม 🔄 ไม่รู้ว่าต้องกลับมาหน้าไหน
   const _main = document.getElementById('mainContent');
   if(_main){
     try {
-      renderDashboard();
+      showPage('dashboard', false);
     } catch(e) {
       _main.innerHTML = '<div style="padding:40px;color:red">Error: '+e.message+'</div>';
     }
@@ -5605,15 +5774,17 @@ function _printThenRestore(main, prev, alsoCloseModal){
 }
 
 function _printHeader(title, subtitle, extra){
+  // [Fix V9-11] จุดเดียวในไฟล์ที่ยังแทรกข้อความลง innerHTML แบบไม่ escape
+  // subtitle ที่ _exportPrintView ส่งมามี locLabel/codeLabel ซึ่งมาจากช่อง location ในชีต
   return `<div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #1a5276">
-    <img src="${_LOGO_SRC}" style="width:56px;height:56px;object-fit:contain;background:white;border-radius:8px;border:1px solid #eee;padding:3px">
+    <img src="${safeImgSrc(_LOGO_SRC)}" style="width:56px;height:56px;object-fit:contain;background:white;border-radius:8px;border:1px solid #eee;padding:3px">
     <div style="flex:1">
       <div style="font-size:16px;font-weight:800;color:#1a2535">SPM Inventory</div>
-      <div style="font-size:13px;font-weight:600;color:#1a5276;margin-top:1px">${title}</div>
-      ${subtitle ? '<div style="font-size:11px;color:#666;margin-top:2px">'+subtitle+'</div>' : ''}
+      <div style="font-size:13px;font-weight:600;color:#1a5276;margin-top:1px">${escHtml(title)}</div>
+      ${subtitle ? '<div style="font-size:11px;color:#666;margin-top:2px">'+escHtml(subtitle)+'</div>' : ''}
     </div>
     <div style="text-align:right;font-size:10px;color:#aaa">
-      ${extra || ''}
+      ${escHtml(extra || '')}
     </div>
   </div>`;
 }
@@ -5786,7 +5957,7 @@ let _bootedFromCache = false;
     if(hc){ hc.textContent = 'วัตถุดิบทั้งหมด ' + db.length + ' รายการ'; }
     if(currentUser){
       const main = document.getElementById('mainContent');
-      if(main) renderDashboard();
+      if(main) showPage('dashboard', false);   // [Fix V9-8] แบบเดียวกับ doLogin()
     }
   } catch(e){ console.error('boot from cache:', e); }
 })();
