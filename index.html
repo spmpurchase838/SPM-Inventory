@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://script.google.com https://script.googleusercontent.com https://api.imgbb.com https://fonts.googleapis.com https://fonts.gstatic.com;">
 <meta http-equiv="X-Content-Type-Options" content="nosniff">
-<meta http-equiv="X-Frame-Options" content="DENY">
+<!-- [Fix V7-8] เอา <meta http-equiv="X-Frame-Options"> ออก — เบราว์เซอร์ไม่รองรับผ่าน meta tag
+     (ขึ้น error ใน console ทุกครั้งที่เปิดหน้า) ต้องตั้งเป็น HTTP response header ฝั่งเซิร์ฟเวอร์เท่านั้น -->
 <title>SPM Inventory</title>
 <link rel="icon" type="image/jpeg" href="data:image/jpeg;base64,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">
 <style>
@@ -337,7 +338,9 @@ td { padding: 8px 12px; vertical-align: middle; }
   border-radius: 4px;
   font-size: 12.5px; font-weight: 500;
   box-shadow: 0 4px 20px rgba(5,15,30,.2);
-  z-index: 999;
+  /* [Fix V7-15] เดิม 999 ซึ่งต่ำกว่า #loginOverlay (9999) ทำให้ข้อความอย่าง
+     "โหลดข้อมูลไม่สำเร็จ" ตอนเปิดแอปครั้งแรกถูกบังจนมองไม่เห็น */
+  z-index: 10001;
   display: none;
   animation: fadeIn .2s ease;
   max-width: 300px;
@@ -709,6 +712,10 @@ tbody tr:hover {
       <a role="button" tabindex="0" onclick="showPage('list');filterBy('A004')"><span>A004 Feed Additive</span><span class="cnt" id="cnt-A004">0</span></a>
       <a role="button" tabindex="0" onclick="showPage('list');filterBy('A005')"><span>A005 Medicine</span><span class="cnt" id="cnt-A005">0</span></a>
       <a role="button" tabindex="0" onclick="showPage('list');filterBy('A009')"><span>A009 Production for trial</span><span class="cnt" id="cnt-A009">0</span></a>
+      <!-- [Fix V7-7] A020/A021 มีใน CODE_MAP และถูกนับรวมใน Group A บน Dashboard อยู่แล้ว
+           แต่เดิมไม่มีในเมนูนี้และไม่มีในตัวเลือก Export จึงกรองดูไม่ได้เลย -->
+      <a role="button" tabindex="0" onclick="showPage('list');filterBy('A020')"><span>A020 RM for sale - bulk</span><span class="cnt" id="cnt-A020">0</span></a>
+      <a role="button" tabindex="0" onclick="showPage('list');filterBy('A021')"><span>A021 RM for sale - Bag</span><span class="cnt" id="cnt-A021">0</span></a>
     </div>
     <div class="acc-header" role="button" tabindex="0" onclick="toggleAcc(this)"><span>B — Semi / WIP</span><span class="arr">▶</span></div>
     <div class="acc-body">
@@ -736,7 +743,7 @@ tbody tr:hover {
 <div id="loginOverlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:#0d1f35;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px">
   <div style="width:360px;max-width:100%">
     <div style="display:flex;flex-direction:column;align-items:center;gap:12px;margin-bottom:32px">
-      <img src="data:image/jpeg;base64,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" style="width:90px;height:90px;object-fit:contain;border-radius:12px;background:white;padding:6px">
+      <img id="loginLogo" alt="SPM" src="" style="width:90px;height:90px;object-fit:contain;border-radius:12px;background:white;padding:6px">
       <div style="text-align:center">
         <div style="color:white;font-weight:700;font-size:16px;letter-spacing:.3px">SPM Inventory</div>
         <div style="color:rgba(255,255,255,.4);font-size:11px;margin-top:2px">SPM Inventory</div>
@@ -766,7 +773,12 @@ tbody tr:hover {
 function _d(h){return h.match(/../g).map(b=>String.fromCharCode(parseInt(b,16)^42)).join('');}
 const GS_URL = _d('425e5e5a59100505594958435a5e044d45454d464f0449454705474b495845590559056b614c534948524247501a5860605a1b58647f1d6f491f6b501d476b7f5b7913755d43197f73755f67681b5e7d5c195f7b40136b6f6712604c464360074c44627d5243667a6c1d4b054f524f49');
 const API_TOKEN = _d('797a67756c6f6f6e6763666675181a181c75417b1d52781e47705c137e5e');
-const IMGBB_KEY = ''; // [BugFix #10] ไม่ได้ใช้งาน — รูปภาพถูกเก็บเป็น base64 ใน Google Sheets โดยตรง
+// ===== โลโก้ (ใช้ร่วมกันทั้งไฟล์) =====
+// [Fix V7-13] เดิมมีรูป base64 ชุดเดียวกันซ้ำ 4 ที่ (favicon / หน้า login / หัวรายงาน / _LOGO_SRC)
+// รวมประมาณ 52 KB — ตอนนี้เก็บชุดเดียวไว้ที่ <link rel="icon"> แล้วอ่านกลับมาใช้ต่อ
+// [Fix V7-12] ลบ IMGBB_KEY ออกด้วย (เป็นค่าว่างและไม่มีใครใช้)
+const _LOGO_SRC = (document.querySelector('link[rel="icon"]') || {}).href || '';
+(function(){ const el = document.getElementById('loginLogo'); if(el) el.src = _LOGO_SRC; })();
 
 const CODE_MAP = {"A001":"Raw Materials","A002":"Liquid & Oil","A003":"Vitamin & Mineral","A004":"Feed additive","A005":"Medicine","A009":"Production for trial","A020":"Raw Materials for sale - bulk","A021":"Raw Materials for sale - Bag","B101":"Semi - RM","B102":"Wip Premix","B103":"WIP ขนมชั้น","C203":"NC - FG Bulk","C204":"NC - FG bag","C209":"NC สารเสริม"};
 
@@ -1049,7 +1061,18 @@ async function loadFromSheet(){
     }
 
     updateCounts();
-    document.getElementById('hdrCount').textContent = `วัตถุดิบทั้งหมด ${db.length} รายการ`;
+    const _hc = document.getElementById('hdrCount');
+    if(_hc){ _hc.textContent = `วัตถุดิบทั้งหมด ${db.length} รายการ`; _hc.style.color = ''; }
+
+    // [Fix V7-4] แถวที่ช่อง No. ว่างในชีตจะได้ no:'' เหมือนกันหมด ทำให้ getStockByNo('')
+    // รวมสต็อกของสินค้าเหล่านั้นเป็นก้อนเดียว ตัวเลขจึงปนกันโดยไม่มีใครรู้ตัว
+    const _noBlank = db.filter(r => !r.no);
+    if(_noBlank.length){
+      console.warn('แถวที่ No. ว่างในชีต:', _noBlank.map(r => 'แถว ' + r.row + ' — ' + r.desc));
+      setTimeout(() => showToast('⚠️ พบ ' + _noBlank.length + ' รายการที่ช่อง "No." ว่างในชีต (' +
+        _noBlank.slice(0,3).map(r => r.desc || 'ไม่มีชื่อ').join(', ') + (_noBlank.length>3?' ...':'') +
+        ') — สต็อกของรายการเหล่านี้จะถูกรวมปนกัน กรุณาใส่รหัส No. ในชีตให้ครบ', 'error'), 1200);
+    }
   } catch(e) {
     // ข้อความให้ชัดขึ้น เผื่อกรณีอัปเดตไฟล์หน้าเว็บก่อน Deploy Apps Script ตัวใหม่
     if(String(e.message||'').indexOf('Unauthorized') >= 0){
@@ -1058,6 +1081,9 @@ async function loadFromSheet(){
       showToast('❌ โหลดข้อมูลไม่สำเร็จ: ' + e.message, 'error');
     }
     _loadOk = false;
+    // [Fix V7-5] เดิมป้ายนี้ค้างที่ "กำลังโหลด..." ตลอดไปเมื่อเชื่อมต่อไม่ได้ ผู้ใช้ไม่รู้ว่าเกิดอะไรขึ้น
+    const _hcErr = document.getElementById('hdrCount');
+    if(_hcErr){ _hcErr.textContent = '⚠️ เชื่อมต่อ Sheet ไม่ได้ — กด 🔄 ลองใหม่'; _hcErr.style.color = '#ffb4b4'; }
     console.error('loadFromSheet error:', e);
   } finally {
     showLoading(false);
@@ -1196,6 +1222,9 @@ function showPage(page, pushHistory=true){
   // หน้าพิมพ์เดิม (ก่อนออกจากหน้านั้น) ไปทับหน้าใหม่ที่ผู้ใช้กำลังดูอยู่แบบไม่มีสาเหตุ — ล้างตัวจับเวลา
   // ทุกครั้งที่มีการเปลี่ยนหน้าจริงผ่าน showPage() กันปัญหานี้
   clearTimeout(window._mobilePrintTimer);
+  // [Fix V7-14] ปิดโหมดหน้าพิมพ์ของ desktop ที่อาจค้างอยู่ด้วย ไม่งั้นตัวจับเวลาเดิมจะไปคืนเนื้อหา
+  // หน้าพิมพ์ทับหน้าใหม่ที่ผู้ใช้เพิ่งเปลี่ยนมา
+  if(window._printCloseNow){ try { window._printCloseNow(); } catch(e){} }
   window._currentPageName = page;   // ใช้ตอนกดปุ่มโหลดข้อมูลใหม่ จะได้กลับมาหน้าเดิม
   closeSidebarOnMobile();
   if(pushHistory) history.pushState({page}, '', '#' + page);
@@ -1669,6 +1698,18 @@ function formHTML(r={}){
       <input id="f_col2" value="${escHtml(r.col2)}" placeholder="เช่น 20 = 1 กระสอบ มี 20 กก." type="number" min="0">
     </div>
   </div>
+  <!-- [Fix V7-3] เดิม getFormData() ยังอ่าน f_loc/f_storage อยู่ แต่ 2 ช่องนี้ถูกถอดออกจากฟอร์มไปแล้ว
+       ทำให้ saveNew บันทึกเป็นค่าว่างเสมอ และ saveEdit แก้ไม่ได้เลย ทั้งที่ Modal รายละเอียดยังโชว์อยู่ -->
+  <div class="form-row">
+    <div class="form-group">
+      <label>Location ประจำของสินค้า</label>
+      <select id="f_loc">${_locationOptionsHtml(r.loc||'')}</select>
+    </div>
+    <div class="form-group">
+      <label>สถานที่จัดเก็บ</label>
+      <input id="f_storage" value="${escHtml(r.storage)||''}" placeholder="เช่น ชั้น A / แถว 3">
+    </div>
+  </div>
   <div class="form-group">
     <label>หมายเหตุ</label>
     <textarea id="f_notes">${escHtml(r.notes)||''}</textarea>
@@ -1766,41 +1807,9 @@ function getFormData(){
   };
 }
 
-async function postSheet(payload){
-  if(window.location.protocol === 'file:') return true;
-  if(!navigator.onLine){
-    showToast('❌ ไม่มีการเชื่อมต่ออินเทอร์เน็ต กรุณาตรวจสอบสัญญาณ', 'error');
-    return false;
-  }
-  try {
-    const body = {...payload, token: API_TOKEN};
-    // ส่ง Content-Type: text/plain เพื่อ bypass CORS preflight
-    // ใช้ fetchTO ที่มี AbortController รองรับ iOS เก่า (ลบ AbortSignal.timeout ที่ไม่รองรับ iOS<16 ออก)
-    const res = await fetchTO(GS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(body),
-      redirect: 'follow',
-    }, 15000);
-    const j = await res.json();
-    if(j.result === 'unauthorized'){
-      showToast('❌ ไม่มีสิทธิ์เข้าถึงระบบ', 'error');
-      return false;
-    }
-    return j.result === 'success';
-  } catch(e) {
-    if(e.message && e.message.includes('หมดเวลา')){
-      showToast('❌ การเชื่อมต่อหมดเวลา กรุณาลองใหม่', 'error');
-    } else {
-      showToast('❌ เชื่อมต่อระบบไม่ได้ กรุณาลองใหม่', 'error');
-    }
-    console.error('postSheet error:', e);
-    return false;
-  }
-}
+// [Fix V7-12] ลบ postSheet() ออก — ทุกจุดยิง fetchTO() ตรงอยู่แล้ว
 
 function showAddModal(){
-  pendingStocks = [{loc:'', qty:'', unit:''}];
   document.getElementById('modalBox').innerHTML = `<h2>+ เพิ่มรายการใหม่</h2>${formHTML()}<div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">ยกเลิก</button><button class="btn btn-primary" onclick="saveNew()">บันทึก</button></div>`;
   document.getElementById('modalBg').classList.add('open');
 }
@@ -1894,7 +1903,6 @@ async function saveNew(){
   db.push(newItem);
   updateCounts();
 
-  pendingStocks = [{location:'', loc:'', qty:'', unit:''}];
   closeModal();
   showToast('✅ เพิ่ม ' + d.no + ' — ' + d.desc + ' เรียบร้อย');
   showPage('list');
@@ -1911,7 +1919,6 @@ async function saveNew(){
 
 function showEditModal(id){
   const r = db.find(x=>x.id===id); if(!r) return;
-  pendingStocks = []; // ไม่ใช้ stocks ในฟอร์มแก้ไข
   document.getElementById('modalBox').innerHTML = `<h2>แก้ไข — ${escHtml(r.no)}</h2>${formHTML(r)}<div class="modal-footer"><button class="btn btn-danger btn-sm" style="margin-right:auto" onclick="deleteItem(${r.id})">ลบ</button><button class="btn btn-outline" onclick="closeModal()">ยกเลิก</button><button class="btn btn-primary" onclick="saveEdit(${r.id})">บันทึก</button></div>`;
   document.getElementById('modalBg').classList.add('open');
 }
@@ -1941,8 +1948,9 @@ async function saveEdit(id){
       pkg:     d.pkg,
       col2:    d.col2,
       cond:    d.cond,
-      loc:     d.loc     || r.loc     || '',   // ฟอร์มไม่มีช่องนี้ -> คงค่าเดิมไว้ ไม่เขียนทับด้วยค่าว่าง
-      storage: d.storage || r.storage || '',
+      // [Fix V7-3] ฟอร์มมี 2 ช่องนี้แล้ว ค่าว่างจึงแปลว่าผู้ใช้ตั้งใจล้างค่าจริง ๆ (แบบเดียวกับ pkg/cond)
+      loc:     d.loc,
+      storage: d.storage,
       image:   d.image   || '',
       image2:  d.image2  || '',
       notes:   d.notes   || '',
@@ -1990,9 +1998,12 @@ async function saveEdit(id){
     if(noChanged){
       MOCK_DAILY.forEach(day => {
         if(!day || !Array.isArray(day.entries)) return;
-        let touched = false;
-        day.entries.forEach(e => { if(e.no === r.no){ e.no = newNo; touched = true; } });
-        if(touched) affectedDates.push(day.date);
+        // [Fix V7-2] ตรงนี้แค่ "หา" ว่าวันไหนเกี่ยวข้องบ้าง ยังไม่เปลี่ยนเลข No. จริง
+        // การเปลี่ยนเลขต้องทำ "หลัง" _mergeServerDay() เท่านั้น ไม่งั้นลายเซ็นของแถวในเครื่อง
+        // (ที่ถูกเปลี่ยนเป็นเลขใหม่ไปแล้ว) จะไม่ตรงกับแถวเดียวกันบนชีต (ที่ยังเป็นเลขเก่า)
+        // merge จะเข้าใจผิดว่าเป็นแถวใหม่ของเพื่อนร่วมงาน แล้วเพิ่มเข้ามาซ้ำอีกชุด
+        // (ทดสอบแล้วเจอจริง: บันทึก 10 กระสอบ 1 แถว กลายเป็น 2 แถว = ยอดคูณสอง)
+        if(day.entries.some(e => e && e.no === r.no)) affectedDates.push(day.date);
       });
     }
 
@@ -2001,20 +2012,34 @@ async function saveEdit(id){
     _clearStockCache();   // นน./หน่วย อาจเปลี่ยน ต้องคำนวณยอด กก. ใหม่
     _clearDailyIndex();
     // [Fix 1.7] ประวัติที่ถูกย้าย No. ต้องบันทึกลงเครื่องและส่งขึ้นชีตด้วย
+    // [Fix V7-2] เดิมลูปนี้ยิง saveDaily (= เขียนทับทั้งวัน) โดยไม่ merge ของบนชีตก่อน
+    // และไม่ผ่าน withDayWriteLock -- ต่างจากทุกจุดอื่นที่มีการป้องกัน [C-1]/[C-2]/[R-2] ครบแล้ว
+    // ผลคือแถวที่เพื่อนร่วมงานบันทึกในวันเหล่านั้นระหว่างที่เราเปิดแอปค้างไว้ จะหายจากชีตทันที
+    // และการเปลี่ยน No. มักกระทบหลายวันพร้อมกัน ความเสียหายจึงเป็นวงกว้าง
     if(noChanged && affectedDates.length){
       _saveDailyData();
       for(const dt of affectedDates){
-        const day = MOCK_DAILY.find(x => x.date === dt);
-        if(!day) continue;
-        try {
-          const res2 = await fetchTO(GS_URL, {
-            method:'POST', headers:{'Content-Type':'text/plain'}, redirect:'follow',
-            body: JSON.stringify({ action:'saveDaily', token:API_TOKEN, date:day.date,
-                                   date_th:day.date_th, recorded_by:day.recorded_by, entries:day.entries })
-          });
-          const j2 = await res2.json();
-          if(!j2.ok) throw new Error(j2.error||'sync ไม่สำเร็จ');
-        } catch(err){ _markPending(dt); }
+        await withDayWriteLock(async () => {
+          const day = MOCK_DAILY.find(x => x.date === dt);
+          if(!day) return;
+          const mg = await _mergeServerDay(day);
+          // merge อาจดึงแถวที่ยังใช้ No. เดิมกลับมาจากชีต ต้องเปลี่ยนเลขให้ตรงกันก่อนเขียนทับ
+          // ไม่งั้นจะเหลือแถวที่ใช้ No. เก่าปนอยู่ กลายเป็นข้อมูลกำพร้าที่ไม่มีสินค้ารองรับ
+          day.entries.forEach(e => { if(e && e.no === r.no) e.no = newNo; });
+          _clearStockCache(); _clearDailyIndex(); _saveDailyData();
+          // ยืนยันสถานะบนชีตไม่ได้ = ห้ามเขียนทับทั้งวัน ให้เข้าคิวไว้ส่งทีหลัง
+          if(!mg.ok){ _markPending(dt); return; }
+          try {
+            const res2 = await fetchTO(GS_URL, {
+              method:'POST', headers:{'Content-Type':'text/plain'}, redirect:'follow',
+              body: JSON.stringify({ action:'saveDaily', token:API_TOKEN, date:day.date,
+                                     date_th:day.date_th, recorded_by:day.recorded_by, entries:day.entries })
+            });
+            const j2 = await res2.json();
+            if(!j2.ok) throw new Error(j2.error||'sync ไม่สำเร็จ');
+            _clearPending(dt);
+          } catch(err){ _markPending(dt); }
+        });
       }
     }
     // [Fix 2.15] ถ้าเปลี่ยน Code ตัวเลขข้างเมนู sidebar ต้องอัปเดตด้วย
@@ -2029,8 +2054,16 @@ async function saveEdit(id){
 }
 
 async function deleteItem(id){
-  if(!await customConfirm('ยืนยันการลบรายการนี้?')) return;
   const r = db.find(x=>x.id===id); if(!r) return;
+  // [Fix V7-6] เดิมเตือนแค่ "ยืนยันการลบรายการนี้?" แต่ประวัติรายวันไม่ได้ถูกลบไปด้วย
+  // ถ้าวันหลังเพิ่ม No. เดิมกลับเข้ามาใหม่ ยอดสะสมเก่าทั้งหมดจะฟื้นคืนมาทันทีแบบไม่มีใครคาดคิด
+  const _histCount = MOCK_DAILY.reduce((n, d) =>
+    n + ((d && Array.isArray(d.entries)) ? d.entries.filter(e => e && e.no === r.no).length : 0), 0);
+  const _delMsg = 'ยืนยันการลบ "' + (r.desc || r.no) + '" ?' +
+    (_histCount ? '\n\n⚠️ สินค้านี้มีประวัติการรับสต็อกอยู่ ' + _histCount + ' รายการ\n' +
+      'ประวัติจะยังคงอยู่ในระบบ (ไม่ถูกลบ) และถ้าเพิ่มรหัส ' + r.no + ' กลับเข้ามาใหม่ภายหลัง\n' +
+      'ยอดสต็อกเดิมทั้งหมดจะกลับมาแสดงอีกครั้ง' : '');
+  if(!await customConfirm(_delMsg)) return;
   try {
     const payload = { action: 'deleteItem', token: API_TOKEN, 'No.': r.no };
     const res = await fetchTO(GS_URL, {
@@ -2125,7 +2158,7 @@ function showDetail(id){
             <div>📍 ${escHtml(h.location)||'-'}</div>
             <div style="font-size:11px;color:#888">${escHtml(h.recorded_by)||'-'}</div>
           </div>
-          <div style="font-weight:600;color:#2874a6;white-space:nowrap;text-align:right">${formatQty(h.qty,h.unit,r.no)}</div>
+          <div style="font-weight:600;color:#2874a6;white-space:nowrap;text-align:right">${formatQty(h.qty,h.unit,r.no,h.kgPerUnit)}</div>
         </div>`).join('')}
       </div>
     </div>` : '';
@@ -2297,52 +2330,12 @@ document.getElementById('modalBg').addEventListener('click', e=>{
   if(e.target===document.getElementById('modalBg')) closeModal();
 });
 
-// ===== Stock Management =====
-let pendingStocks = [{loc:'', qty:'', unit:''}];
 
-function updateStock(i, field, val){
-  if(!pendingStocks[i]) pendingStocks[i] = {loc:'',qty:'',unit:''};
-  pendingStocks[i][field] = val;
-}
 
-function addStockRow(){
-  pendingStocks.push({loc:'', qty:'', unit:''});
-  const container = document.getElementById('stockRows');
-  const i = pendingStocks.length - 1;
-  const div = document.createElement('div');
-  div.className = 'stock-row';
-  div.id = 'srow_' + i;
-  div.innerHTML = `
-    <select onchange="updateStock(${i},'location',this.value)">${_locationOptionsHtml('')}</select>
-    <input placeholder="สถานที่จัดเก็บ" oninput="updateStock(${i},'loc',this.value)">
-    <input placeholder="จำนวน" type="number" min="0" oninput="updateStock(${i},'qty',this.value)">
-    <select onchange="updateStock(${i},'unit',this.value)">${_unitOptionsHtml('')}</select>
-    <button class="btn-remove" onclick="removeStock(${i})" type="button">×</button>`;
-  container.appendChild(div);
-}
 
-function removeStock(i){
-  pendingStocks.splice(i, 1);
-  // re-render ใหม่ทั้งหมด — index จะถูก reassign ให้ถูกต้อง
-  _renderStockRows();
-}
 
-function _renderStockRows(){
-  const container = document.getElementById('stockRows');
-  if(!container) return;
-  container.innerHTML = pendingStocks.map((s,idx) => `
-    <div class="stock-row" id="srow_${idx}">
-      <select onchange="updateStock(${idx},'location',this.value)">${_locationOptionsHtml(s.location||'')}</select>
-      <input placeholder="สถานที่จัดเก็บ" value="${escHtml(s.loc||'')}" oninput="updateStock(${idx},'loc',this.value)">
-      <input placeholder="จำนวน" type="number" min="0" value="${s.qty||''}" oninput="updateStock(${idx},'qty',this.value)">
-      <select onchange="updateStock(${idx},'unit',this.value)">${_unitOptionsHtml(s.unit||'')}</select>
-      <button class="btn-remove" onclick="removeStock(${idx})" type="button">×</button>
-    </div>`).join('');
-}
-
-function getStocks(){
-  return pendingStocks.filter(s => s.location || s.qty);
-}
+// [Fix V7-12] ลบชุด pendingStocks / updateStock / addStockRow / removeStock / _renderStockRows / getStocks ออก
+// ฟอร์มเพิ่ม-แก้สินค้าไม่มีตารางกรอกสต็อกแล้ว (#stockRows ไม่มีอยู่ใน DOM) สต็อกบันทึกผ่านหน้า "อัปเดตสต็อก" เท่านั้น
 
 
 // ===== Unit Converter =====
@@ -2893,6 +2886,13 @@ async function saveStockItem(itemId, btnEl){
         // โหมดแทนที่จึงไม่เคยแทนที่จริง ยอดเก่ายังอยู่ครบและเพี้ยนสะสมไปเรื่อย ๆ
         // ตอนนี้ใช้ธง snap:true บน entry แรก แล้ว _entriesForNo จะรีเซ็ตยอดสะสมทั้งหมดที่จุดนั้น
         // (ไม่ต้องไล่ลบข้อมูลย้อนหลัง ประวัติการรับของยังอยู่ครบเหมือนเดิม)
+        // [Fix V7-1] บัคร้ายแรง: แถวของวันนี้ที่ถูกลบทิ้งตรงนี้ ต้องบันทึกลายเซ็นไว้ด้วย
+        // (เหมือนที่ deleteDailyEntry ทำ) ไม่งั้นถ้า POST saveDaily ล้มเหลว วันนี้จะเข้าคิว "รอส่ง"
+        // แล้ว retryPending -> _mergeServerDay จะเห็นว่าแถวเดิมยังอยู่บนชีต แล้ว push() กลับเข้ามา
+        // "ต่อท้าย" entry ที่มี snap:true -> ยอดเก่าถูกบวกทับ snapshot กลายเป็นนับซ้ำ
+        // (ทดสอบจริง: 500 กก. -> แทนที่เป็น 200 กก. -> หลังส่งซ้ำสำเร็จกลายเป็น 700 กก.)
+        todayRecord.entries.filter(e => e.no === r.no)
+          .forEach(e => _markDeletedSig(dateStr, _entrySig(e)));
         todayRecord.entries = todayRecord.entries.filter(e => e.no !== r.no);
       }
 
@@ -3198,7 +3198,6 @@ function _applyMobileFixes(){
     el.style.width = '100%';
   });
 }
-function _fixMobileTableToggle(){ _applyMobileFixes(); }
 window.addEventListener('resize', _applyMobileFixes);
 window.addEventListener('orientationchange', _applyMobileFixes);
 
@@ -3516,7 +3515,7 @@ function renderDaily(container){
     </div>
   </div>
   <div id="dailyContent">${doRender(selectedDate)}</div>`;
-  _fixMobileTableToggle();
+  _applyMobileFixes();
 
   // เปิดให้ฟังก์ชันข้างนอก (ลบ / แก้ไข / undo) เรียกใช้ได้ เดิมเรียก doRender ตรงๆ แล้ว ReferenceError
   window._doRender = doRender;
@@ -3557,13 +3556,13 @@ function showVariance(){
       <div class="form-group">
         <label>วันที่ 1 (เดิม)</label>
         <select id="var_date1">
-          ${dates.map((d,i)=>'<option value="'+d.date+'" '+(i===1?'selected':'')+'>'+d.date_th+'</option>').join('')}
+          ${dates.map((d,i)=>'<option value="'+escHtml(d.date)+'" '+(i===1?'selected':'')+'>'+escHtml(d.date_th)+'</option>').join('')}
         </select>
       </div>
       <div class="form-group">
         <label>วันที่ 2 (ใหม่)</label>
         <select id="var_date2">
-          ${dates.map((d,i)=>'<option value="'+d.date+'" '+(i===0?'selected':'')+'>'+d.date_th+'</option>').join('')}
+          ${dates.map((d,i)=>'<option value="'+escHtml(d.date)+'" '+(i===0?'selected':'')+'>'+escHtml(d.date_th)+'</option>').join('')}
         </select>
       </div>
     </div>
@@ -3576,43 +3575,7 @@ function showVariance(){
   document.getElementById('modalBg').classList.add('open');
 }
 
-// ===== Export Excel =====
-function exportExcel(){
-  const day = MOCK_DAILY.find(d=>d.date===window._currentDay);
-  if(!day){ showToast('ไม่พบข้อมูลวันนี้','error'); return; }
-  
-  const loc = window._dailySelectedLoc || 'all';
-  const entries = loc==='all' ? day.entries : day.entries.filter(e=>normLoc(e.location)===loc);
-  
-  // สร้าง CSV
-  const rows = [
-    ['วันที่','รหัส','ชื่อสินค้า','Code','Location','สถานที่จัดเก็บ','จำนวน','หน่วย','รวม (กก.)','บันทึกโดย']
-  ];
-  entries.forEach(e=>{
-    const kg = convertToKg(e.qty, e.unit, e.no, e.kgPerUnit);
-    rows.push([
-      day.date_th, e.no, e.desc, e.code,
-      e.location||'', e.storage||'',
-      e.qty, e.unit,
-      kg !== null ? kg : e.qty,
-      day.recorded_by
-    ]);
-  });
-  
-  // แปลงเป็น CSV
-  const csv = rows.map(r => r.map(csvCell).join(',')).join('\r\n');
-  const bom = '\uFEFF'; // BOM สำหรับ Excel ภาษาไทย
-  const blob = new Blob([bom + csv], {type:'text/csv;charset=utf-8'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `stock_${day.date_th.replace(/ /g,'_')}.csv`;
-  // [Fix 2.17] ต้อง append เข้า DOM และหน่วง revoke ไม่งั้นบน iOS/Firefox บางเวอร์ชันไฟล์ไม่ถูกดาวน์โหลด
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 2000);
-  showToast('✅ Export Excel เรียบร้อย');
-}
+// [Fix V7-12] ลบ exportExcel() ออก — ถูกแทนที่ด้วย _exportCSV() แล้ว
 
 
 function exportVariancePDF(){
@@ -3740,9 +3703,7 @@ function exportVariancePDF(){
     </div>`;
     window._mobilePrintTimer = setTimeout(() => window._mobilePrintClose(), 30000);
   } else {
-    window.print();
-    main.innerHTML = prev;
-    closeModal();
+    _printThenRestore(main, prev, true);   // [Fix V7-14]
   }
 }
 
@@ -4310,195 +4271,8 @@ async function saveEditDailyEntry(date, realIdx){
 }
 
 
-function exportDailyPDF(mode='all'){
-  const day = MOCK_DAILY.find(d => d.date === window._currentDay)
-    || MOCK_DAILY.slice().sort((a,b)=>b.date.localeCompare(a.date))[0];
-
-  // [BugFix #1] guard กัน crash ถ้าไม่มีข้อมูลบันทึกประจำวันเลย
-  if(!day){ showToast('⚠️ ไม่พบข้อมูลบันทึกรับสต็อก ไม่สามารถพิมพ์ได้', 'error'); return; }
-
-  const printDate = new Date().toLocaleDateString('th-TH', {year:'numeric',month:'long',day:'numeric'});
-
-  // จัดกลุ่มตาม code
-  const byCode = {};
-  day.entries.forEach(e => {
-    if(!byCode[e.code]) byCode[e.code] = [];
-    byCode[e.code].push(e);
-  });
-
-  // สร้าง HTML สำหรับปริ้น แยกตาม code
-  const sections = Object.entries(byCode).map(([code, entries]) => {
-    const codeName = CODE_MAP[code] || code;
-    const rows = entries.map(e => `
-      <tr>
-        <td style="padding:7px 10px;border:1px solid #ccc;font-family:monospace;font-size:11px">${escHtml(e.no)}</td>
-        <td style="padding:7px 10px;border:1px solid #ccc;font-size:11px">${escHtml(e.desc)}</td>
-        <td style="padding:7px 10px;border:1px solid #ccc;font-size:11px">${escHtml(e.location)||'-'}</td>
-        <td style="padding:7px 10px;border:1px solid #ccc;font-size:11px">${escHtml(e.storage)||'-'}</td>
-        <td style="padding:7px 10px;border:1px solid #ccc;font-size:11px;text-align:center">${escHtml(e.unit)}</td>
-        <td style="padding:7px 10px;border:1px solid #ccc;width:100px"></td>
-      </tr>`).join('');
-
-    return `
-    <div style="margin-bottom:24px;page-break-inside:avoid">
-      <div style="background:#1a5276;color:white;padding:7px 12px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0">
-        ${code} — ${codeName}
-      </div>
-      <table style="width:100%;border-collapse:collapse;font-size:11px">
-        <thead>
-          <tr style="background:#d6eaf8">
-            <th style="padding:6px 10px;border:1px solid #ccc;text-align:left;width:80px">รหัส</th>
-            <th style="padding:6px 10px;border:1px solid #ccc;text-align:left">ชื่อสินค้า</th>
-            <th style="padding:6px 10px;border:1px solid #ccc;text-align:left;width:110px">Location</th>
-            <th style="padding:6px 10px;border:1px solid #ccc;text-align:left;width:90px">สถานที่</th>
-            <th style="padding:6px 10px;border:1px solid #ccc;text-align:center;width:60px">หน่วย</th>
-            <th style="padding:6px 10px;border:1px solid #ccc;text-align:center;width:100px">จำนวนจริง</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
-  }).join('');
-
-  const main = document.getElementById('mainContent');
-  const prev = main.innerHTML;
-
-  const currentLoc = window._dailySelectedLoc || 'all';
-
-  if(mode === 'checklist'){
-    // ===== แบบฟอร์มตรวจสต็อก (ช่องว่างให้กรอก) =====
-    document.getElementById('printTitle').textContent = 'แบบฟอร์มตรวจสอบสต็อกวัตถุดิบ';
-    document.getElementById('printSubtitle').textContent =
-      `วันที่ตรวจ: ${day.date_th}  |  พิมพ์วันที่: ${printDate}  |  บันทึกโดย: ${escHtml(day.recorded_by)}`;
-
-    main.innerHTML = `
-      <div style="font-size:11px">
-        ${sections}
-      </div>`;
-
-  } else {
-    const exportEntries = (mode === 'location' && currentLoc !== 'all')
-      // [Fix 2.23] ต้องเทียบค่าที่ normalize แล้ว เพราะ currentLoc มาจาก normLoc ส่วน e.location เป็นค่าดิบ
-      ? day.entries.filter(e => normLoc(e.location||'') === currentLoc)
-      : day.entries;
-    const locLabel = (mode === 'location' && currentLoc !== 'all') ? ' — ' + currentLoc : '';
-
-    const summary2 = {};
-    exportEntries.forEach(e => {
-      const key = e.no + '||' + e.unit;
-      if(!summary2[key]) summary2[key] = {no:e.no, desc:e.desc, code:e.code, unit:e.unit, total:0, rows:[]};
-      summary2[key].total = r2(summary2[key].total + _num(e.qty));   // [FIX-A2]
-      summary2[key].rows.push(e);
-    });
-
-    const locTotals = {};
-    exportEntries.forEach(e => {
-      if(!locTotals[e.location]) locTotals[e.location] = {};
-      locTotals[e.location][e.unit] = r2((locTotals[e.location][e.unit]||0) + _num(e.qty));   // [FIX-A2]
-    });
-
-    const summaryByCode = {};
-    Object.values(summary2).forEach(s => {
-      if(!summaryByCode[s.code]) summaryByCode[s.code] = [];
-      summaryByCode[s.code].push(s);
-    });
-
-    const summarySections = Object.entries(summaryByCode).map(([code, items]) => {
-      const codeName = CODE_MAP[code] || code;
-      const rows = items.flatMap(s => [
-        `<tr style="background:#eaf4fb">
-          <td style="padding:6px 10px;border:1px solid #ccc;font-family:monospace;font-size:11px">${escHtml(s.no)}</td>
-          <td style="padding:6px 10px;border:1px solid #ccc;font-size:11px;font-weight:600">${escHtml(s.desc)}</td>
-          <td style="padding:6px 10px;border:1px solid #ccc;font-size:11px">รวมทุกสถานที่</td>
-          <td style="padding:6px 10px;border:1px solid #ccc;text-align:right;font-weight:700;color:#1a5276;font-size:11px">
-            ${_num(s.total).toLocaleString()} ${s.unit}${(()=>{if(s.unit==='กก.'||s.unit==='kg')return '';const kg=convertToKg(s.total,s.unit,s.no,s.kgPerUnit);return kg?' ('+kg.toLocaleString()+' กก.)':''})()}
-          </td>
-        </tr>`,
-        ...s.rows.map(row => `
-        <tr>
-          <td style="padding:5px 10px;border:1px solid #ddd"></td>
-          <td style="padding:5px 10px;border:1px solid #ddd;color:#555;font-size:10px;padding-left:20px">↳ ${escHtml(row.location||'-')} / ${escHtml(row.storage||'-')}</td>
-          <td style="padding:5px 10px;border:1px solid #ddd;font-size:10px"></td>
-          <td style="padding:5px 10px;border:1px solid #ddd;text-align:right;color:#2874a6;font-weight:600;font-size:10px">
-            ${_num(row.qty).toLocaleString()} ${row.unit}${(()=>{if(row.unit==='กก.'||row.unit==='kg')return '';const kg=convertToKg(row.qty,row.unit,row.no,row.kgPerUnit);return kg?' ('+kg.toLocaleString()+' กก.)':''})()}
-          </td>
-        </tr>`)
-      ]).join('');
-      return `
-      <div style="margin-bottom:20px;page-break-inside:avoid">
-        <div style="background:#1a5276;color:white;padding:7px 12px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0">
-          ${code} — ${codeName}
-        </div>
-        <table style="width:100%;border-collapse:collapse;font-size:11px">
-          <thead><tr style="background:#d6eaf8">
-            <th style="padding:6px 10px;border:1px solid #ccc;text-align:left;width:80px">รหัส</th>
-            <th style="padding:6px 10px;border:1px solid #ccc;text-align:left">ชื่อสินค้า</th>
-            <th style="padding:6px 10px;border:1px solid #ccc;text-align:left;width:120px">Location</th>
-            <th style="padding:6px 10px;border:1px solid #ccc;text-align:right;width:140px">จำนวน</th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>`;
-    }).join('');
-
-    // คำนวณ total ต่อ location เป็น กก. ทั้งหมด
-    const locTotalsKg = {};
-    exportEntries.forEach(e => {
-      if(!locTotalsKg[e.location]) locTotalsKg[e.location] = 0;
-      const kg = convertToKg(e.qty, e.unit, e.no, e.kgPerUnit);
-      if(kg !== null) locTotalsKg[e.location] = r2(locTotalsKg[e.location] + kg);
-    });
-    // grand total
-    const grandTotal = r2(Object.values(locTotalsKg).reduce((a,b)=>a+b,0));
-
-    const totalSection = `
-      <div style="margin-top:16px;border-top:2px solid #1a5276;padding-top:12px;page-break-inside:avoid">
-        <div style="font-weight:700;font-size:12px;color:#1a5276;margin-bottom:8px">📊 สรุปรวม (กก.)${locLabel}</div>
-        <table style="width:100%;border-collapse:collapse;font-size:11px">
-          <thead><tr style="background:#1a5276;color:white">
-            <th style="padding:6px 10px;text-align:left">Location</th>
-            <th style="padding:6px 10px;text-align:right">รวม (กก.)</th>
-          </tr></thead>
-          <tbody>
-            ${Object.entries(locTotalsKg).map(([loc, kg]) => `
-            <tr style="border-bottom:1px solid #eee">
-              <td style="padding:6px 10px;font-weight:600">📦 ${escHtml(loc)}</td>
-              <td style="padding:6px 10px;text-align:right;font-weight:700;color:#2874a6">${kg.toLocaleString()} กก.</td>
-            </tr>`).join('')}
-            <tr style="background:#eaf4fb;font-weight:700">
-              <td style="padding:7px 10px;color:#1a5276">🔢 รวมทั้งหมด</td>
-              <td style="padding:7px 10px;text-align:right;color:#1a5276;font-size:13px">${grandTotal.toLocaleString()} กก.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>`;
-
-    document.getElementById('printTitle').textContent = 'รายงานสรุปสต็อกวัตถุดิบ' + locLabel;
-    document.getElementById('printSubtitle').textContent = '';
-    main.innerHTML = `<div style="font-size:11px">${summarySections}${totalSection}</div>`;
-  }
-
-  if(_isMobileDevice()){
-    showToast('📱 กรุณาใช้ Share → Print จากเบราว์เซอร์ แล้วกด "ปิด" ด้านล่าง');
-    window._mobilePrintPrev = prev;
-    window._mobilePrintClose = () => {
-      const m = document.getElementById('mainContent');
-      if(m) m.innerHTML = window._mobilePrintPrev;
-      closeModal(); // [Fix M-2] ปิด modal ที่อาจค้างอยู่เบื้องหลังหน้าพิมพ์
-      clearTimeout(window._mobilePrintTimer);
-    };
-    main.innerHTML += `<div style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9999">
-      <button onclick="window._mobilePrintClose()"
-        style="background:#e74c3c;color:white;border:none;border-radius:8px;padding:12px 28px;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.3)">
-        ✕ ปิดหน้าพิมพ์
-      </button>
-    </div>`;
-    window._mobilePrintTimer = setTimeout(() => window._mobilePrintClose(), 30000);
-  } else {
-    window.print();
-    main.innerHTML = prev;
-  }
-}
+// [Fix V7-12] ลบ exportDailyPDF() ออก (~190 บรรทัด) — ไม่มีจุดเรียกใช้เลยตั้งแต่เปลี่ยนมาใช้ showExportDialog()/_doExport()
+//              (แปลว่า "แบบฟอร์มตรวจสต็อก" และ "Export เฉพาะ Location" ใช้งานไม่ได้อยู่แล้วมาตั้งแต่ต้น)
 
 
 // ===== Helper: Normalize location name =====
@@ -4544,6 +4318,7 @@ function normLoc(loc){
 // ===== Helper: คำนวณสต็อกสะสมจาก MOCK_DAILY =====
 // ===== MOCK_DAILY Date Index (O(1) lookup แทน O(n) scan) =====
 let _dailyIndex = null;
+let _daysSortedCache = null;   // [Fix V7-11] cache ของ _daysSorted() ล้างพร้อม _clearDailyIndex()
 function _getDailyIndex(){
   if(!_dailyIndex){
     _dailyIndex = {};
@@ -4556,6 +4331,7 @@ function getDayByDate(date){
 }
 function _clearDailyIndex(){
   _dailyIndex = null;
+  _daysSortedCache = null;   // [Fix V7-11]
 }
 
 // ===== Stock Cache (memoize) =====
@@ -4569,8 +4345,14 @@ function _clearStockCache(){
 
 // [Fix 1.2] วันทั้งหมดเรียงจากเก่าไปใหม่ — จำเป็นสำหรับ logic snapshot ด้านล่าง
 // (MOCK_DAILY ถูก push ต่อท้ายได้โดยไม่ sort จึงพึ่งลำดับใน array ตรง ๆ ไม่ได้)
+// [Fix V7-11] เดิมฟังก์ชันนี้ copy+sort ทั้ง MOCK_DAILY ใหม่ "ทุกครั้ง" ที่ _entriesForNo ถูกเรียก
+// และ Dashboard วนเรียก getTotalKgByNo() ทีละสินค้า -> O(สินค้า x วัน log วัน) ทุกครั้งที่ล้าง cache
+// ตอนนี้ cache ไว้ แล้วล้างพร้อม _clearDailyIndex() ซึ่งถูกเรียกทุกจุดที่ MOCK_DAILY เปลี่ยนอยู่แล้ว
 function _daysSorted(){
-  return MOCK_DAILY.slice().sort((a,b) => String(a.date).localeCompare(String(b.date)));
+  if(!_daysSortedCache){
+    _daysSortedCache = MOCK_DAILY.slice().sort((a,b) => String(a.date).localeCompare(String(b.date)));
+  }
+  return _daysSortedCache;
 }
 
 // [Fix 1.2] รวบรวม entry ของสินค้าหนึ่งตัวตามลำดับเวลา
@@ -4666,7 +4448,6 @@ function doLogin(){
   if(ud){ ud.textContent = '👤 ' + name; ud.style.display = 'inline-block'; ud.style.cursor = 'pointer'; ud.title = 'คลิกเพื่อดูคำแนะนำอีกครั้ง'; ud.onclick = _resetOnboarding; }
   const _cub = document.getElementById('changeUserBtn');   // [Fix 2.14]
   if(_cub) _cub.style.display = 'inline-block';
-  _resetSession();
   // render หน้าแรกหลัง login
   const _main = document.getElementById('mainContent');
   if(_main){
@@ -4831,7 +4612,7 @@ window._filterDailySearch = _debounce((q) => {
       html += '<div style="padding:10px 14px;border-bottom:1px solid var(--rule);display:flex;flex-direction:column;gap:4px">'
         + '<div style="display:flex;justify-content:space-between;align-items:center">'
         + '<span class="badge ba" style="font-family:monospace;font-size:11px">'+escHtml(e.no)+'</span>'
-        + '<span style="font-size:13px;font-weight:700;color:var(--blue)">'+formatQty(e.qty, e.unit, e.no)+'</span>'
+        + '<span style="font-size:13px;font-weight:700;color:var(--blue)">'+formatQty(e.qty, e.unit, e.no, e.kgPerUnit)+'</span>'
         + '</div>'
         + '<div style="font-size:13px;font-weight:500;color:var(--ink)">'+escHtml(e.desc)+'</div>'
         + '<div style="font-size:11px;color:var(--ink-3)">📍 '+escHtml(normLoc(e.location||''))+'</div>'
@@ -4930,7 +4711,7 @@ window._selectMonth = (ym) => {
     const cards=Object.values(sm).map(s=>{
       const bc=_bcls(s.code);
       const skg=r2(s.rows.reduce((a,r)=>{const k=convertToKg(r.qty,r.unit,r.no,r.kgPerUnit);return r2(a+(k!==null?k:0));},0));
-      const rows=s.rows.map(r=>'<tr style="border-bottom:1px solid #f5f5f5"><td style="padding:4px 10px">'+(escHtml(r.location)||'-')+'</td><td style="padding:4px 10px;color:#777">'+(escHtml(r.storage)||'-')+'</td><td style="padding:4px 10px;text-align:right;font-weight:600;color:#2874a6">'+formatQty(r.qty,r.unit,r.no)+'</td></tr>').join('');
+      const rows=s.rows.map(r=>'<tr style="border-bottom:1px solid #f5f5f5"><td style="padding:4px 10px">'+(escHtml(r.location)||'-')+'</td><td style="padding:4px 10px;color:#777">'+(escHtml(r.storage)||'-')+'</td><td style="padding:4px 10px;text-align:right;font-weight:600;color:#2874a6">'+formatQty(r.qty,r.unit,r.no,r.kgPerUnit)+'</td></tr>').join('');
       return '<div style="background:white;border-radius:6px;padding:12px;margin-bottom:6px;border:1px solid #eef2f7">'+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
         '<div><span class="badge '+bc+'" style="margin-right:6px">'+escHtml(s.code)+'</span>'+
@@ -5059,13 +4840,7 @@ document.addEventListener('click', (e)=>{
 
 
 
-// ===== Session =====
-// ถอดระบบ auto-logout ออกแล้ว (หน้าใส่ชื่อเป็นแค่ป้ายชื่อผู้บันทึก ไม่ใช่ระบบยืนยันตัวตน)
-// เดิมเตะออกทุก 30 นาที ซึ่งกวนมากเวลาถือมือถือเดินนับสต็อก และตัวนับถอยหลังยังซ้อนกันเองด้วย
-function _resetSession(){ /* no-op */ }
 
-// ===== Splash Screen =====
-function _hideSplash(){}
 
 
 // ===== Empty State Helper =====
@@ -5351,8 +5126,14 @@ function _expFmtChange(){
 
 function _doExport(){
   const fmt = document.querySelector('input[name="expFmt"]:checked')?.value || 'csv';
-  const dateFrom = document.getElementById('expDateFrom').value;
-  const dateTo = document.getElementById('expDateTo').value;
+  let dateFrom = document.getElementById('expDateFrom').value;
+  let dateTo = document.getElementById('expDateTo').value;
+  // [Fix V7-9] เดิมถ้าเลือกช่วงกลับด้าน (จาก 13 ส.ค. ถึง 10 ส.ค.) จะได้ toast "ไม่พบข้อมูล"
+  // ซึ่งชวนให้เข้าใจผิดว่าไม่มีข้อมูลจริง ๆ — สลับให้อัตโนมัติแล้วแจ้งให้ทราบแทน
+  if(dateFrom && dateTo && dateFrom > dateTo){
+    const _swap = dateFrom; dateFrom = dateTo; dateTo = _swap;
+    showToast('ℹ️ สลับช่วงวันที่ให้อัตโนมัติ (วันเริ่มต้นอยู่หลังวันสิ้นสุด)');
+  }
   const code = document.getElementById('expCode').value;
   const loc = document.getElementById('expLoc').value;
 
@@ -5388,13 +5169,24 @@ function _doExport(){
   const locLabel = loc === 'all' ? 'ทุก Location' : loc;
 
   if(fmt === 'csv'){
-    _exportCSV(allEntries, dateLabel, codeLabel, locLabel);
+    // [Fix V7-10] ส่งวันที่แบบ YYYY-MM-DD ไปตั้งชื่อไฟล์แทนวันที่ไทยที่มีช่องว่าง
+    _exportCSV(allEntries, dateLabel, codeLabel, locLabel,
+               dateFrom === dateTo ? dateFrom : dateFrom + '_ถึง_' + dateTo);
   } else {
     _exportPrintView(allEntries, filteredDays, dateLabel, codeLabel, locLabel);
   }
 }
 
-function _exportCSV(entries, dateLabel, codeLabel, locLabel){
+// [Fix V7-10] ชื่อไฟล์เดิมมีช่องว่าง (เช่น "13 สิงหาคม 2569", "ทุก Code") ทำให้บาง browser/iOS
+// ตั้งชื่อไฟล์เพี้ยนหรือกลายเป็น "download" เฉย ๆ — ตัดอักขระที่ใช้ไม่ได้และแทนช่องว่างด้วย _
+function _safeFileName(s){
+  return String(s == null ? '' : s)
+    .replace(/[\\/:*?"<>|\r\n\t]/g, '')
+    .replace(/\s+/g, '_')
+    .slice(0, 80);
+}
+
+function _exportCSV(entries, dateLabel, codeLabel, locLabel, fileDate){
   const rows = [
     ['วันที่','No.','ชื่อสินค้า','Code','Location','สถานที่จัดเก็บ','จำนวน','หน่วย','รวม (กก.)','บันทึกโดย']
   ];
@@ -5413,7 +5205,7 @@ function _exportCSV(entries, dateLabel, codeLabel, locLabel){
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `SPM_stock_${dateLabel.replace(/ /g,'_')}_${codeLabel}_${locLabel}.csv`;
+  a.download = _safeFileName('SPM_stock_' + (fileDate || dateLabel) + '_' + codeLabel + '_' + locLabel) + '.csv';
   // [Fix 2.17] ต้อง append เข้า DOM และหน่วง revoke ไม่งั้นบน iOS/Firefox บางเวอร์ชันไฟล์ไม่ถูกดาวน์โหลด
   document.body.appendChild(a);
   a.click();
@@ -5504,16 +5296,60 @@ function _exportPrintView(entries, days, dateLabel, codeLabel, locLabel){
     </div>`;
     window._mobilePrintTimer = setTimeout(() => window._mobilePrintClose(), 30000);
   } else {
-    window.print();
-    main.innerHTML = prev;
+    _printThenRestore(main, prev, false);   // [Fix V7-14]
   }
 }
 
 
 // ===== Print Helper =====
+// [Fix V7-14] เดิมเรียก window.print() แล้ว restore เนื้อหาทันทีในบรรทัดถัดไป
+// บน Firefox/Safari บางเวอร์ชัน print() ไม่ block การทำงาน -> หน้าจอถูกคืนก่อนตัวพรีวิวจะ render
+// ตอนนี้รอ event afterprint (มี matchMedia + timeout เป็นตัวสำรอง) และคืนค่าเฉพาะกรณีที่ผู้ใช้
+// ยังอยู่หน้าเดิม (เทียบ innerHTML) กันไปทับหน้าที่ผู้ใช้เปลี่ยนไปแล้ว
+function _printThenRestore(main, prev, alsoCloseModal){
+  if(!main) return;
+  // ปุ่มออกจากหน้าพิมพ์ (ซ่อนอัตโนมัติตอนสั่งพิมพ์จริงด้วยกฎ @media print ที่ซ่อน .btn)
+  // จำเป็นเพราะบางเบราว์เซอร์/webview ในแอป (เช่น LINE, Facebook) ยิง beforeprint แต่ไม่ยิง afterprint
+  // ถ้าไม่มีปุ่มนี้ผู้ใช้จะค้างอยู่กับหน้าพิมพ์โดยไม่มีทางออก
+  main.insertAdjacentHTML('beforeend',
+    '<div id="printCloseBar" style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9999">' +
+    '<button class="btn" onclick="window._printCloseNow&&window._printCloseNow()" ' +
+    'style="background:#e74c3c;color:white;border:none;border-radius:8px;padding:10px 24px;' +
+    'font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.3)">✕ ปิดหน้าพิมพ์</button></div>');
+
+  const printedHTML = main.innerHTML;
+  let done = false;
+  const mq = window.matchMedia ? window.matchMedia('print') : null;
+  const onMq = (e) => { if(!e.matches) restore(); };
+  function restore(){
+    if(done) return;
+    done = true;
+    window.removeEventListener('beforeprint', onBefore);
+    window.removeEventListener('afterprint', restore);
+    if(mq && mq.removeListener) mq.removeListener(onMq);
+    clearTimeout(window._printRestoreTimer);
+    window._printCloseNow = null;
+    const cur = document.getElementById('mainContent');
+    // คืนค่าเฉพาะตอนที่ผู้ใช้ยังอยู่หน้าเดิม กันไปทับหน้าที่ผู้ใช้เปลี่ยนไปแล้ว
+    if(cur === main && main.innerHTML === printedHTML) main.innerHTML = prev;
+    if(alsoCloseModal) closeModal();
+  }
+  window._printCloseNow = restore;
+  let sawBeforePrint = false;
+  const onBefore = () => { sawBeforePrint = true; };
+  window.addEventListener('beforeprint', onBefore);
+  window.addEventListener('afterprint', restore);
+  if(mq && mq.addListener) mq.addListener(onMq);
+  window.print();
+  // เบราว์เซอร์ที่ไม่รองรับ event พิมพ์เลย -> คืนหน้าจอเองใน 1.2 วิ (พฤติกรรมเดิม)
+  setTimeout(() => { if(!sawBeforePrint) restore(); }, 1200);
+  // กันเหนียวขั้นสุดท้าย เผื่อ afterprint ไม่มาเลย และผู้ใช้ไม่กดปุ่มปิด
+  window._printRestoreTimer = setTimeout(restore, 120000);
+}
+
 function _printHeader(title, subtitle, extra){
   return `<div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #1a5276">
-    <img src="data:image/jpeg;base64,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" style="width:56px;height:56px;object-fit:contain;background:white;border-radius:8px;border:1px solid #eee;padding:3px">
+    <img src="${_LOGO_SRC}" style="width:56px;height:56px;object-fit:contain;background:white;border-radius:8px;border:1px solid #eee;padding:3px">
     <div style="flex:1">
       <div style="font-size:16px;font-weight:800;color:#1a2535">SPM Inventory</div>
       <div style="font-size:13px;font-weight:600;color:#1a5276;margin-top:1px">${title}</div>
@@ -5560,8 +5396,7 @@ function _checkDuplicateNo(no, currentId){
 }
 
 
-// ===== Logo (shared) =====
-const _LOGO_SRC = 'data:image/jpeg;base64,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';
+// (ย้าย _LOGO_SRC ไปประกาศไว้ด้านบนสุดของสคริปต์แล้ว — ดู [Fix V7-13])
 
 
 // ===== Mobile Detection =====
@@ -5649,38 +5484,7 @@ function _qaClear(){
 }
 
 
-// ===== Clear Daily Data =====
-async function _clearAllDailyData(){
-  // [BugFix #2] เพิ่ม 2 ขั้นตอน: แจ้งเตือน + sync ลบที่ Sheet ด้วย
-  if(!await customConfirm(
-    'ลบข้อมูลบันทึกรับสต็อกทั้งหมด?\n\n' +
-    '⚠️ ระบบจะล้างข้อมูลทั้งในเครื่อง AND ส่งคำสั่งลบไปที่ Google Sheet\n' +
-    'ไม่สามารถกู้คืนได้'
-  )) return;
-
-  // 1) ลบที่ Google Sheet ก่อน (ถ้า sync ไม่ได้ ยังล้างในเครื่องได้)
-  let syncMsg = '';
-  try {
-    const res = await fetchTO(GS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'clearAllDaily', token: API_TOKEN }),
-      redirect: 'follow',
-    });
-    const json = await res.json();
-    if(!json.ok) syncMsg = ' (Sheet: ' + (json.error||'ไม่สำเร็จ') + ')';
-  } catch(e) {
-    syncMsg = ' (Sheet offline — กรุณาลบ rows ใน Google Sheet ด้วยตนเอง)';
-  }
-
-  // 2) ล้างในเครื่อง
-  MOCK_DAILY.length = 0;
-  localStorage.removeItem('spm_daily_data');
-  _clearStockCache();
-  _clearDailyIndex();
-  showToast(syncMsg ? '⚠️ ล้างในเครื่องแล้ว' + syncMsg : '✅ ล้างข้อมูลเรียบร้อย (Sheet + เครื่อง)');
-  showPage('daily');
-}
+// [Fix V7-12] ลบ _clearAllDailyData() ออก — ไม่มีปุ่มเรียกใช้ (ถ้าต้องล้างข้อมูลทั้งหมด ให้ทำในชีตโดยตรง)
 
 // ===== Init: ถ้ามี currentUser ที่ login ไว้แล้ว ให้ skip หน้า login =====
 if(currentUser){
@@ -5696,7 +5500,6 @@ if(currentUser){
   }
   const _cub = document.getElementById('changeUserBtn');   // [Fix 2.14]
   if(_cub) _cub.style.display = 'inline-block';
-  _resetSession();
 }
 
 // ===== safeRow: escape fields ก่อน render =====
@@ -5776,6 +5579,8 @@ loadFromSheet().then(() => {
           <option value="A004">A004 — Feed Additive</option>
           <option value="A005">A005 — Medicine</option>
           <option value="A009">A009 — Production for trial</option>
+          <option value="A020">A020 — Raw Materials for sale - bulk</option>
+          <option value="A021">A021 — Raw Materials for sale - Bag</option>
           <option value="B101">B101 — Semi-RM</option>
           <option value="B102">B102 — WIP Premix</option>
           <option value="B103">B103 — WIP ขนมชั้น</option>
