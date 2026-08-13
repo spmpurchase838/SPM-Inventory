@@ -3,11 +3,45 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://script.google.com https://script.googleusercontent.com https://api.imgbb.com https://fonts.googleapis.com https://fonts.gstatic.com;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' data: blob: https://script.google.com https://script.googleusercontent.com https://api.imgbb.com https://fonts.googleapis.com https://fonts.gstatic.com;">
 <meta http-equiv="X-Content-Type-Options" content="nosniff">
 <!-- [Fix V7-8] เอา <meta http-equiv="X-Frame-Options"> ออก — เบราว์เซอร์ไม่รองรับผ่าน meta tag
      (ขึ้น error ใน console ทุกครั้งที่เปิดหน้า) ต้องตั้งเป็น HTTP response header ฝั่งเซิร์ฟเวอร์เท่านั้น -->
 <title>SPM Inventory</title>
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     V10 — รอบแก้บัคจากการตรวจสอบ 13 ส.ค. 2569 (ตรวจโดยรันไฟล์จริง + จำลอง Apps Script)
+     ค้นหาคำว่า [Fix V10-xx] ในไฟล์เพื่อดูรายละเอียดของแต่ละข้อ
+
+     ร้ายแรง (ทำให้ตัวเลขผิด / ข้อมูลเสียหายแบบเงียบ ๆ)
+       V10-1  แก้ไขไป "ผิดรายการ" ในชีต เมื่อ modal เปิดค้างระหว่างที่ระบบโหลดข้อมูลใหม่
+              (id คือลำดับแถวในชีต ซึ่งถูกสร้างใหม่ทุกครั้งที่โหลด) -> ยืนยันด้วยรหัส No. ก่อนบันทึกทุกครั้ง
+       V10-2  ยอด "↺ นับสต็อกใหม่" กลับมาเป็นยอดเก่าหลังกด 🔄 (1,000 -> 200 -> 1,200)
+              เพราะ loadFromSheet ทับข้อมูลโดยไม่รักษาธง snap -> เพิ่มกลไกกู้คืนฟิลด์เสริม
+       V10-3  น้ำหนักต่อหน่วยของหน่วยถัง/เบาท์ที่กรอกเองหาย -> ยอด กก. กลายเป็น 0 (สาเหตุเดียวกับ V10-2)
+       V10-4  เพิ่มสินค้าซ้ำ 2 แถว เมื่อชีตเขียนสำเร็จแต่ตอบผิดรูปแบบแล้วผู้ใช้กดซ้ำ
+       V10-5  ตัวเลขที่มีคอมม่าในชีตอ่านผิดถึง 1,000 เท่า (parseFloat('1,200') = 1) -> ใช้ toNum()
+       V10-6  Dashboard นับยอดซ้ำสองเท่าเมื่อมี No. ซ้ำในชีต
+       V10-7  บันทึกสต็อกให้สินค้าที่ช่อง No. ว่างได้ ทำให้สต็อกปนกันทุกรายการ -> บล็อกแล้ว
+
+     ปานกลาง
+       V10-8  หลายจุดไม่เช็ค res.ok / ตอบเป็น HTML แล้วขึ้น error ที่อ่านไม่รู้เรื่อง -> readJson() + ตรวจย้อนหลัง
+       V10-9  ช่องค้นหาบนแถบหัวแคบเหลือ 29px บนมือถือเมื่อป้าย "รอส่ง" ขึ้น
+       V10-11 จำนวนติดลบถูกตัดทิ้งเงียบ ๆ พร้อมข้อความที่ผิด
+       V10-12 ปัด "จำนวน" ก่อนคูณน้ำหนักต่อหน่วย ทำให้ยอด กก. คลาด -> ปัดที่ผลลัพธ์เท่านั้น
+       V10-13 บันทึก/ลบจากหน้าอื่นแล้วหน้าเปลี่ยนเองไม่สอดคล้องกับ breadcrumb/เมนู
+       V10-14 ชีตที่ไม่มีคอลัมน์ date_th ทำให้ขึ้นคำว่า "undefined" ให้ผู้ใช้เห็น
+       V10-15 ส่งข้อมูลค้างซ้ำทุก 90 วิ ยิงตั้งแต่ก่อน login และวนไม่สิ้นสุด -> รอ login + ถอยเวลาแบบทวีคูณ
+       V10-18 เอา 'unsafe-eval' ออกจาก CSP (ไฟล์นี้ไม่ได้ใช้ eval เลย)
+
+     ยังไม่ได้แก้ในรอบนี้ (ต้องแก้ฝั่ง Google Apps Script / เป็นงานเพิ่มฟีเจอร์)
+       • GS_URL + API_TOKEN ยังมองเห็นได้จาก page source (XOR-42 ถอดได้ทันที ไม่ใช่การเข้ารหัส)
+         ใครเปิดหน้านี้ได้ก็อ่าน/เขียน/ลบชีตได้จาก console -> ควรย้ายไปใช้ Google OAuth
+       • หน้า login เก็บแค่ชื่อลง localStorage ไม่ใช่การยืนยันตัวตนจริง ช่อง recorded_by จึงอ้างอิงไม่ได้
+       • ยังไม่มีโหมด "เบิกออก / จ่ายออก" การลดยอดต้องใช้ ↺ นับสต็อกใหม่เท่านั้น
+       • ควรตรวจว่า Apps Script เก็บคอลัมน์ snap / kgPerUnit / note / images ครบหรือไม่
+         ถ้าไม่ครบ V10-2/V10-3 จะกู้ได้แค่ในเครื่องที่บันทึก เครื่องอื่นจะเห็นยอดไม่ตรงกัน
+         (ถ้ากู้คืนบ่อยจะมีแถบเตือนสีเหลืองขึ้นบอกเองแล้ว)
+     ═══════════════════════════════════════════════════════════════════════════ -->
 <link rel="icon" type="image/jpeg" href="data:image/jpeg;base64,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">
 <!-- [Fix V8-SPEED-1] เดิมโหลดฟอนต์ด้วย @import ข้างใน <style> ซึ่งเบราว์เซอร์จะ "เพิ่งรู้"
      ว่าต้องไปโหลดฟอนต์หลังจากอ่าน CSS จบแล้ว ทำให้หน้าจอค้างขาวนานขึ้นทุกครั้งที่เปิด
@@ -501,8 +535,12 @@ tbody tr:hover {
   header { padding: env(safe-area-inset-top,0px) 14px 0; min-height: 52px; gap: 8px; }
   header h1 { font-size: 13px; }
   header > svg { display: none; }
-  #globalSearchWrap { max-width: 160px !important; margin: 0 6px !important; }
+  /* [Fix V10-9] เดิมมี flex:1 แต่ไม่มี min-width ช่องค้นหาจึงถูกบีบได้ไม่จำกัด
+     ทดสอบจริง: จอ 320px ที่มีป้าย "⚠️ รอส่ง" ขึ้น ช่องค้นหาเหลือกว้าง 29px = ใช้งานไม่ได้เลย
+     และป้ายนั้นจะโผล่ทุกครั้งที่ส่งข้อมูลไม่สำเร็จ ซึ่งคือช่วงที่เน็ตไม่ดี = เจอบ่อยที่สุดหน้างาน */
+  #globalSearchWrap { max-width: 160px !important; min-width: 116px; margin: 0 6px !important; }
   #globalSearchInput { font-size: 12px !important; padding: 5px 10px !important; }
+  #pendingBadge { max-width: 84px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #globalSearchResults { min-width: 280px; }
 
   /* แถบหัวบนมือถือเดิมล้นออกนอกจอ ~141px ทำให้ปุ่ม "เปลี่ยนผู้ใช้" กดไม่ได้
@@ -595,8 +633,10 @@ tbody tr:hover {
 
 /* จอแคบมาก (เช่น iPhone SE) — ลดระยะขอบแถบหัวลง กันปุ่มหลุดออกนอกจอตอนมีป้าย "รอส่ง" ขึ้นพร้อมกัน */
 @media (max-width: 360px) {
-  header { padding-left: 8px; padding-right: 8px; gap: 6px; }
-  #globalSearchWrap { margin: 0 4px !important; }
+  header { padding-left: 8px; padding-right: 8px; gap: 5px; }
+  #globalSearchWrap { margin: 0 4px !important; min-width: 100px; }   /* [Fix V10-9] */
+  #changeUserBtn { padding: 2px 6px !important; margin-left: 4px !important; }
+  #refreshBtn { margin-right: 4px !important; }
 }
 
 /* Tablet */
@@ -843,9 +883,47 @@ function _bcls(code){
   const g = (code == null ? '' : String(code))[0];
   return BADGE_CLASS[g] || 'bc';
 }
+// ═══════════════════════════════════════════════════════════════════════════
+// [Fix V10-5] บั๊กสำคัญ: ตัวเลขที่มีคอมม่าคั่นหลักพันในชีตถูกอ่านผิดแบบเงียบ ๆ
+// parseFloat('1,200') = 1  (JavaScript ตัดทิ้งตั้งแต่เจอคอมม่า ไม่มี error ขึ้นเลย)
+// ถ้ามีใครตั้ง format คอลัมน์ "นน./หน่วย" หรือ "จำนวน" เป็นข้อความ (Plain text)
+// หรือพิมพ์คอมม่าเองในชีต ยอดจะเพี้ยนได้ถึง 1,000 เท่า โดยไม่มีอะไรเตือน
+// (ทดสอบจริง: 1,200 กก. + 5 กระสอบ×1,000 -> ระบบรวมได้ 6 กก. ทั้งที่ควรได้ 6,200 กก.)
+// ตอนนี้ทุกจุดในไฟล์เรียก toNum() ตัวนี้แทน parseFloat() โดยตัดคอมม่า / ช่องว่าง /
+// non-breaking space / zero-width space ที่ Google Sheets มักแถมมาให้ออกก่อนเสมอ
+function toNum(v){
+  if(typeof v === 'number') return isFinite(v) ? v : NaN;
+  if(v == null) return NaN;
+  const s = String(v).replace(/[\s\u00a0\u200b\u2007\u202f]/g, '').replace(/,/g, '');
+  if(s === '') return NaN;
+  return Number.parseFloat(s);
+}
+
+// [Fix V10-8] อ่านผลลัพธ์จาก Apps Script อย่างปลอดภัย — ใช้แทน res.json() ทุกจุด
+// เดิมมีแค่ saveNew/saveEdit ที่เช็ค res.ok (Fix R-7) จุดอื่นเรียก res.json() ตรง ๆ
+// ถ้า Apps Script redirect ไปหน้า HTML (พบได้บ่อย) จะโยน SyntaxError
+// "Unexpected token '<'" ซึ่งไปโผล่เป็นข้อความ error ที่ผู้ใช้อ่านไม่รู้เรื่องเลย
+async function readJson(res){
+  if(!res || !res.ok) throw new Error('เซิร์ฟเวอร์ตอบผิดปกติ (HTTP ' + (res ? res.status : '?') + ')');
+  const txt = await res.text();
+  try { return JSON.parse(txt); }
+  catch(e){ throw new Error('เซิร์ฟเวอร์ตอบกลับไม่ใช่ข้อมูล JSON — อาจต้อง Deploy Apps Script ตัวใหม่ก่อน'); }
+}
+
 // [FIX-A2] qty ที่มาจากชีตอาจเป็น "ข้อความ" ('10') ถ้าเอาไปบวกตรง ๆ จะกลายเป็นการต่อสตริง
 // เช่น 10 + '5' = '105' ทำให้ยอดรวมผิดแบบมองไม่ออก
-function _num(v){ const n = parseFloat(v); return isNaN(n) ? 0 : n; }
+function _num(v){ const n = toNum(v); return isNaN(n) ? 0 : n; }
+
+// [Fix V10-12] ปัดเศษสำหรับ "จำนวน" — ต้องเก็บความละเอียดไว้มากกว่า r2()
+// เดิมยอดรวมจำนวนถูกปัดเหลือ 2 ตำแหน่ง "ก่อน" เอาไปคูณน้ำหนักต่อหน่วย
+// ทำให้ 2.567 กระสอบ × 50 = 128.5 กก. แทนที่จะเป็น 128.35 กก. (คลาด 0.15 กก.)
+// ยิ่งหน่วยใหญ่ยิ่งคลาดมาก เช่น 2.567 ตัน จะคลาดถึง 3 กก. — ต้องปัดที่ "ผลลัพธ์ กก." เท่านั้น
+function r6(n){ const x = toNum(n); return isNaN(x) ? 0 : Math.round(x * 1e6) / 1e6; }
+
+// [Fix V10-1] "รุ่น" ของ db — เพิ่มขึ้น 1 ทุกครั้งที่ db ถูกสร้างใหม่จากชีต
+// จำเป็นเพราะ id ของสินค้าคือ "ลำดับแถวในชีต" (i+1) ซึ่งเลื่อนได้ถ้ามีคนแทรก/ลบแถว
+// modal ที่เปิดค้างไว้ก่อนโหลดใหม่จึงอาจชี้ไปสินค้าผิดตัว (ดูรายละเอียดที่ showEditModal)
+let _dbGen = 0;
 
 let db = [];
 let currentFilter = 'all';
@@ -950,7 +1028,10 @@ function _paintPending(){
   const p = _getPending();
   if(!p.length){ el.style.display = 'none'; return; }
   el.style.display = 'inline-block';
-  el.textContent = '⚠️ รอส่ง ' + p.length + ' วัน';
+  // [Fix V10-9] จอเล็กใช้ข้อความสั้น ไม่ให้ไปเบียดช่องค้นหาจนใช้งานไม่ได้
+  el.textContent = (window.innerWidth <= 430)
+    ? ('⚠️ ' + p.length)
+    : ('⚠️ รอส่ง ' + p.length + ' วัน');
   el.title = 'ยังส่งขึ้น Google Sheet ไม่สำเร็จ: ' + p.join(', ') + ' (กดเพื่อลองส่งอีกครั้ง)';
 }
 
@@ -972,9 +1053,16 @@ function withDayWriteLock(fn){
 // [Fix 2.19] ฟังก์ชันนี้ถูกยิงจาก 3 ทาง (event online / setInterval 90 วิ / setTimeout ตอนโหลด)
 // ถ้าไม่มี guard จะส่ง saveDaily วันเดียวกันซ้อนกันได้
 let _retryBusy = false;
+// [Fix V10-15] เดิม setInterval ยิงทุก 90 วิ ตั้งแต่โหลดสคริปต์ (ก่อนผ่านหน้า login)
+// และถ้าวันไหนส่งไม่ผ่านถาวร (เช่น payload ใหญ่เกินลิมิตของ Google Sheets) จะยิงวนไม่มีที่สิ้นสุด
+// กิน quota การรัน Apps Script ซึ่งมีเพดานต่อวัน — ตอนนี้ถอยเวลาเพิ่มขึ้นเรื่อย ๆ เมื่อล้มเหลวติดกัน
+let _lastRetryAt = 0;
+let _retryFailStreak = 0;
 async function retryPending(silent){
   if(_retryBusy) return;
   _retryBusy = true;
+  _lastRetryAt = Date.now();
+  let _sawFail = 0;
   try {
   const p = _getPending();
   if(!p.length){ if(!silent) showToast('ไม่มีข้อมูลค้างส่ง'); return; }
@@ -997,7 +1085,7 @@ async function retryPending(silent){
             body: JSON.stringify({ action:'saveDaily', token:API_TOKEN, date:day.date,
                                    date_th:day.date_th, recorded_by:day.recorded_by, entries:day.entries })
           });
-          const j = await res.json();
+          const j = await readJson(res);
           if(!j.ok) throw new Error(j.error||'ส่งไม่สำเร็จ');
         } else {
           // [Fix R-3] วันนี้ไม่มีข้อมูลในเครื่องแล้ว ไม่ได้แปลว่าผู้ใช้ "ตั้งใจลบทั้งวัน" เสมอไป
@@ -1013,7 +1101,7 @@ async function retryPending(silent){
             method:'POST', headers:{'Content-Type':'text/plain'}, redirect:'follow',
             body: JSON.stringify({ action:'deleteDailyDate', token:API_TOKEN, date:date })
           });
-          const j = await res.json();
+          const j = await readJson(res);
           if(!j.ok) throw new Error(j.error||'ลบไม่สำเร็จ');
           if(day){ const _i = MOCK_DAILY.indexOf(day); if(_i >= 0) MOCK_DAILY.splice(_i, 1); _saveDailyData(); }
         }
@@ -1022,12 +1110,29 @@ async function retryPending(silent){
       ok++;
     } catch(e){ fail++; }
   }
+  _sawFail = fail;
   if(!silent || ok) showToast(fail ? ('ส่งสำเร็จ ' + ok + ' วัน, ยังค้าง ' + fail + ' วัน') : ('✅ ส่งข้อมูลค้างขึ้น Sheet ครบแล้ว (' + ok + ' วัน)'), fail?'error':'success');
-  } finally { _retryBusy = false; }
+  } finally {
+    _retryBusy = false;
+    _lastRetryAt = Date.now();
+    _retryFailStreak = _sawFail ? Math.min(_retryFailStreak + 1, 8) : 0;   // [Fix V10-15]
+  }
 }
 
-window.addEventListener('online', () => { setTimeout(()=>retryPending(true), 1200); });
-setInterval(() => { if(navigator.onLine && _getPending().length) retryPending(true); }, 90000);
+window.addEventListener('online', () => {
+  _retryFailStreak = 0;   // [Fix V10-15] เน็ตกลับมาแล้ว เริ่มนับใหม่ ให้ลองส่งได้ทันที
+  setTimeout(()=>retryPending(true), 1200);
+});
+setInterval(() => {
+  if(!currentUser) return;                                   // [Fix V10-15] ยังไม่ผ่านหน้า login ไม่ต้องยิง
+  if(!navigator.onLine || !_getPending().length) return;
+  // ล้มเหลวติดกันยิ่งมาก ยิ่งเว้นระยะนานขึ้น (90 วิ -> สูงสุดราว 24 นาที)
+  if(_retryFailStreak > 0){
+    const wait = Math.min(90000 * Math.pow(2, _retryFailStreak), 1440000);
+    if(Date.now() - _lastRetryAt < wait) return;
+  }
+  retryPending(true);
+}, 90000);
 
 // fetch ที่มี timeout เสมอ (iOS เก่าไม่รองรับ AbortSignal.timeout จึงใช้ AbortController)
 const REQ_TIMEOUT = 25000;
@@ -1131,7 +1236,7 @@ async function loadFromSheet(opts){
     // กัน unhandled rejection ถ้าคำขอใดพังก่อนที่จะถึงคิว await ของตัวเอง
     _pItems.catch(()=>{}); _pDaily.catch(()=>{});
     const res = await _pItems;
-    const json = await res.json();
+    const json = await readJson(res);
     if(!json.ok) throw new Error(json.error || 'โหลดข้อมูลไม่สำเร็จ');
 
     // [Fix V8-14] จำ id -> No. ของชุดเดิมไว้ก่อน เพื่อย้ายค่าที่ผู้ใช้กรอกค้างไว้ให้ตรงสินค้าเดิม
@@ -1157,15 +1262,20 @@ async function loadFromSheet(opts){
       stocks:  [],
     }));
 
+    _dbGen++;                  // [Fix V10-1] id ทุกตัวเพิ่งถูกสร้างใหม่ modal ที่เปิดค้างอยู่เชื่อ id เดิมไม่ได้แล้ว
     _remapSEKeys(_prevById);   // [Fix V8-14]
 
     // โหลด Daily ด้วย (คำขอนี้ยิงไปพร้อมกับ getItems ตั้งแต่ต้นแล้ว รอแค่ผลลัพธ์)
     const resD = await _pDaily;
-    const jsonD = await resD.json();
+    const jsonD = await readJson(resD);
+    _dataWarnings = [];   // [Fix V10-2] ย้ายขึ้นมาก่อน เพราะบล็อก Daily ด้านล่างเพิ่มคำเตือนได้ด้วย
     if(jsonD.ok){
       // เก็บวันที่ยังส่งขึ้นชีตไม่สำเร็จไว้ก่อน ไม่ให้ข้อมูลจากชีตมาทับจนของในเครื่องหาย
       const pending = _getPending();
       const keep = MOCK_DAILY.filter(d => pending.indexOf(d.date) >= 0);
+      // [Fix V10-2/V10-3] จำฟิลด์เสริมของแถวในเครื่องไว้ "ก่อน" ที่จะเอาข้อมูลจากชีตมาทับ
+      const _localMeta = _snapshotDailyMeta(MOCK_DAILY);
+      let _metaRestored = 0;
       MOCK_DAILY.length = 0;
       // [Fix 2.8] normalize วันที่และ location ก่อนใช้ ไม่งั้นถ้า Apps Script ส่ง Date จริงกลับมา
       // จะได้ '2026-08-06T17:00:00.000Z' ทำให้ปฏิทินและการค้นหาวันหาข้อมูลไม่เจอ
@@ -1176,7 +1286,11 @@ async function loadFromSheet(opts){
         .filter(d => d && d.date && Array.isArray(d.entries))
         .forEach(d => {
           d.date = normDateStr(d.date) || d.date;
+          // [Fix V10-14] ชีตบางชุดไม่มีคอลัมน์ date_th -> เดิมทุกหน้าจะโชว์คำว่า "undefined"
+          if(!d.date_th) d.date_th = _formatThDate(d.date);
           d.entries.forEach(e => { if(e) e.location = normLoc(e.location||''); });
+          // [Fix V10-2/V10-3] กู้ธง snap / นน.ต่อหน่วย / หมายเหตุ / รูป ที่ชีตไม่ได้ส่งกลับมา
+          _metaRestored += _restoreDailyMeta(d, _localMeta);
           if(pending.indexOf(d.date) < 0) MOCK_DAILY.push(d);
         });
       keep.forEach(d => MOCK_DAILY.push(d));
@@ -1185,6 +1299,14 @@ async function loadFromSheet(opts){
       _clearDailyIndex();
       _saveDailyData();
       _paintPending();
+      // [Fix V10-2/V10-3] ถ้าต้องกู้ฟิลด์เสริมบ่อย ๆ = ชีตไม่ได้เก็บคอลัมน์เหล่านั้น
+      // เตือนให้ไปแก้ Apps Script เพราะข้อมูลจะรอดแค่ในเครื่องนี้เท่านั้น (เครื่องอื่นจะเห็นยอดผิด)
+      if(_metaRestored > 0){
+        console.warn('[V10] กู้ฟิลด์เสริมของประวัติรายวันจากข้อมูลในเครื่อง ' + _metaRestored + ' ค่า — ชีตอาจไม่ได้เก็บคอลัมน์ snap / kgPerUnit / note / images');
+        _dataWarnings.push('ชีตดูเหมือน<b>ไม่ได้เก็บข้อมูลบางคอลัมน์ของประวัติรายวัน</b> ' +
+          '(ธง "นับสต็อกใหม่" / น้ำหนักต่อหน่วยรายแถว / หมายเหตุ / รูป) — เครื่องนี้กู้คืนให้จากข้อมูลที่เก็บไว้ในเครื่องแล้ว ' +
+          'แต่<b>เครื่องอื่นจะเห็นยอดไม่ตรงกัน</b> กรุณาให้ผู้ดูแลเพิ่มคอลัมน์เหล่านี้ใน Google Apps Script');
+      }
       if(pending.length) setTimeout(()=>retryPending(true), 1500);
     }
 
@@ -1195,7 +1317,6 @@ async function loadFromSheet(opts){
     // ===== ตรวจความถูกต้องของข้อมูลในชีต แล้วขึ้นเป็น "แถบเตือนค้างบนหน้า" =====
     // [Fix V9-4] เดิมทั้ง 3 กรณีนี้เตือนด้วย toast ที่หายไปใน 3 วินาที บนมือถือมักพลาด
     // ทั้งที่เป็นปัญหาที่ทำให้ "ตัวเลขสต็อกผิด" จนกว่าจะไปแก้ในชีต จึงต้องค้างไว้ให้เห็นตลอด
-    _dataWarnings = [];
 
     // [Fix V7-4] แถวที่ช่อง No. ว่างในชีตจะได้ no:'' เหมือนกันหมด ทำให้ getStockByNo('')
     // รวมสต็อกของสินค้าเหล่านั้นเป็นก้อนเดียว ตัวเลขจึงปนกันโดยไม่มีใครรู้ตัว
@@ -1547,14 +1668,18 @@ function renderDashboard(){
   // (หน้ารายการวัตถุดิบและหน้าประวัติมี ⚠️ แต่หน้านี้ซึ่งเป็นตัวเลขที่ผู้บริหารดู ไม่มี)
   // ทำให้อ่านยอดที่ขาดไปว่าเป็นยอดจริง เช่น 10 กระสอบ×50 + 5 ถัง แสดงแค่ 500 กก.
   let grandUnknown = 0;
-  db.forEach(r => {
-    grandTotalKg = r2(grandTotalKg + getTotalKgByNo(r.no));
-    grandUnknown += _unknownKgCount(r.no);
+  // [Fix V10-6] บั๊ก: เดิมวน db.forEach ทุกแถว ถ้าชีตมี No. ซ้ำกัน 2 แถว
+  // ยอดของรหัสนั้นจะถูกบวกเข้ามา 2 ครั้ง (ทดสอบจริง: ยอดจริง 500 กก. -> Dashboard แสดง 1,000 กก.)
+  // มีแถบเตือนขึ้นให้แล้ว แต่ตัวเลขบน KPI และการ์ดทุกใบก็ยังผิดอยู่ -> ต้องนับรหัสละครั้งเดียว
+  const _uniqNos = [...new Set(db.map(r => r.no || ''))];
+  _uniqNos.forEach(no => {
+    grandTotalKg = r2(grandTotalKg + getTotalKgByNo(no));
+    grandUnknown += _unknownKgCount(no);
   });
 
   // วันที่อัปเดตล่าสุด
   const lastDay = MOCK_DAILY.length ? MOCK_DAILY.slice().sort((a,b)=>b.date.localeCompare(a.date))[0] : null;
-  const lastUpdate = lastDay ? lastDay.date_th : '—';
+  const lastUpdate = lastDay ? (lastDay.date_th || _formatThDate(lastDay.date)) : '—';   // [Fix V10-14]
 
 
   // นับ locations ที่มีสต็อกอยู่
@@ -1587,13 +1712,25 @@ function renderDashboard(){
   // (เดิมรวมจำนวนข้ามสินค้าก่อนแล้วค่อยแปลง โดยส่ง no='' ทำให้กระสอบทั้งหมดตกหล่น)
   const stockSummaryKg = (codes) => {
     let totalKg = 0;
-    db.filter(r => codes.includes(r.code)).forEach(r => { totalKg = r2(totalKg + getTotalKgByNo(r.no)); });
+    const seen = new Set();   // [Fix V10-6] กันนับซ้ำเมื่อมี No. ซ้ำในชีต
+    db.filter(r => codes.includes(r.code)).forEach(r => {
+      const k = r.no || '';
+      if(seen.has(k)) return;
+      seen.add(k);
+      totalKg = r2(totalKg + getTotalKgByNo(r.no));
+    });
     return totalKg;
   };
   // [Fix V8-4] จำนวนรายการในกลุ่มนี้ที่ยังแปลงเป็น กก. ไม่ได้ (ใช้เตือนใต้ยอดของแต่ละกลุ่ม)
   const stockUnknownCount = (codes) => {
     let n = 0;
-    db.filter(r => codes.includes(r.code)).forEach(r => { n += _unknownKgCount(r.no); });
+    const seen = new Set();   // [Fix V10-6]
+    db.filter(r => codes.includes(r.code)).forEach(r => {
+      const k = r.no || '';
+      if(seen.has(k)) return;
+      seen.add(k);
+      n += _unknownKgCount(r.no);
+    });
     return n;
   };
 
@@ -1605,7 +1742,13 @@ function renderDashboard(){
   const unkC = stockUnknownCount(groupC);
   // [Fix V9-2] ยอดของกลุ่ม "อื่น ๆ" — คิดจากแถวโดยตรง เพราะกลุ่มนี้ไม่ได้อ้างอิงรายการ Code คงที่
   let kgO = 0, unkO = 0;
-  otherRows.forEach(r => { kgO = r2(kgO + getTotalKgByNo(r.no)); unkO += _unknownKgCount(r.no); });
+  const _seenO = new Set();   // [Fix V10-6]
+  otherRows.forEach(r => {
+    const k = r.no || '';
+    if(_seenO.has(k)) return;
+    _seenO.add(k);
+    kgO = r2(kgO + getTotalKgByNo(r.no)); unkO += _unknownKgCount(r.no);
+  });
 
   const groupCard = (letter, label, count, pct, color, colorLight, details, kg, unk, filterToken) => `
     <div class="hover-card" style="background:white;border-radius:12px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.08);flex:1;min-width:280px;border-top:3px solid ${color}">
@@ -1761,8 +1904,8 @@ function renderListTable(slice){
       const {qtyCell, kgCell} = getStock(r);
       const img = (r.image || r.image2)
         ? '<div style="display:flex;gap:4px">'
-          + (r.image  ? '<img class="thumb" loading="lazy" decoding="async" src="'+safeImgSrc(r.image)+'" onclick="showDetail('+r.id+')" style="width:44px;height:44px" title="รูปสินค้า">' : '')
-          + (r.image2 ? '<img class="thumb" loading="lazy" decoding="async" src="'+safeImgSrc(r.image2)+'" onclick="showDetail('+r.id+')" style="width:44px;height:44px" title="รูปแบบบรรจุภัณฑ์">' : '')
+          + (r.image  ? '<img class="thumb" loading="lazy" decoding="async" src="'+safeImgSrc(r.image)+'" onclick="showDetail('+r.id+',\''+escJs(r.no)+'\')" style="width:44px;height:44px" title="รูปสินค้า">' : '')
+          + (r.image2 ? '<img class="thumb" loading="lazy" decoding="async" src="'+safeImgSrc(r.image2)+'" onclick="showDetail('+r.id+',\''+escJs(r.no)+'\')" style="width:44px;height:44px" title="รูปแบบบรรจุภัณฑ์">' : '')
           + '</div>'
         : '';
       return '<div style="background:white;border:1px solid var(--rule);border-radius:8px;padding:12px;margin-bottom:8px" oncontextmenu="showQuickAction(event,'+r.id+')" ontouchstart="_qaTouch(event,'+r.id+')" ontouchend="_qaClear()" ontouchmove="_qaClear()">'+
@@ -1781,8 +1924,8 @@ function renderListTable(slice){
             (qtyCell!=='-' ? '<span style="color:var(--ink-2)">🔢 '+qtyCell+'</span>' : '')+
           '</div>'+
           '<div style="display:flex;gap:6px">'+
-            '<button class="btn btn-sm btn-outline" onclick="showDetail('+r.id+')" style="flex:1;justify-content:center">ดูรายละเอียด</button>'+
-            '<button class="btn btn-sm btn-outline" onclick="showEditModal('+r.id+')" style="flex:1;justify-content:center">แก้ไข</button>'+
+            '<button class="btn btn-sm btn-outline" onclick="showDetail('+r.id+',\''+escJs(r.no)+'\')" style="flex:1;justify-content:center">ดูรายละเอียด</button>'+
+            '<button class="btn btn-sm btn-outline" onclick="showEditModal('+r.id+',\''+escJs(r.no)+'\')" style="flex:1;justify-content:center">แก้ไข</button>'+
           '</div>'+
         '</div>'+
         '</div>'+
@@ -1801,8 +1944,8 @@ function renderListTable(slice){
       const {qtyCell, kgCell} = getStock(r);
       const img = (r.image || r.image2)
         ? '<div style="display:flex;gap:4px">'
-          + (r.image  ? '<img class="thumb" loading="lazy" decoding="async" src="'+safeImgSrc(r.image)+'" onclick="showDetail('+r.id+')" title="รูปสินค้า">' : '')
-          + (r.image2 ? '<img class="thumb" loading="lazy" decoding="async" src="'+safeImgSrc(r.image2)+'" onclick="showDetail('+r.id+')" title="รูปแบบบรรจุภัณฑ์">' : '')
+          + (r.image  ? '<img class="thumb" loading="lazy" decoding="async" src="'+safeImgSrc(r.image)+'" onclick="showDetail('+r.id+',\''+escJs(r.no)+'\')" title="รูปสินค้า">' : '')
+          + (r.image2 ? '<img class="thumb" loading="lazy" decoding="async" src="'+safeImgSrc(r.image2)+'" onclick="showDetail('+r.id+',\''+escJs(r.no)+'\')" title="รูปแบบบรรจุภัณฑ์">' : '')
           + '</div>'
         : '<div class="no-img">ไม่มี</div>';
       return '<tr oncontextmenu="showQuickAction(event,'+r.id+')" style="cursor:context-menu">' +
@@ -1817,8 +1960,8 @@ function renderListTable(slice){
         '<td style="font-size:12px;color:#1a5276;font-weight:700">'+qtyCell+'</td>' +
         '<td style="font-size:12px;color:#1a5276;font-weight:700">'+kgCell+'</td>' +
         '<td>' +
-          '<button class="btn btn-sm btn-outline" onclick="showDetail('+r.id+')">ดู</button>' +
-          '<button class="btn btn-sm btn-outline" onclick="showEditModal('+r.id+')" style="margin-left:3px">แก้</button>' +
+          '<button class="btn btn-sm btn-outline" onclick="showDetail('+r.id+',\''+escJs(r.no)+'\')">ดู</button>' +
+          '<button class="btn btn-sm btn-outline" onclick="showEditModal('+r.id+',\''+escJs(r.no)+'\')" style="margin-left:3px">แก้</button>' +
         '</td>' +
         '</tr>';
     }).join('');
@@ -2058,6 +2201,19 @@ function showAddModal(){
   document.getElementById('modalBg').classList.add('open');
 }
 
+// [Fix V10-4] ถามชีตตรง ๆ ว่ารหัสนี้ขึ้นไปแล้วหรือยัง
+// คืน true = เจอบนชีต | false = ไม่เจอ | null = ตรวจสอบไม่ได้ (ออฟไลน์/หมดเวลา)
+async function _itemExistsOnSheet(no){
+  if(!no || !navigator.onLine) return null;
+  try {
+    const res = await fetchTO(GS_URL + '?action=getItems&token=' + API_TOKEN, {}, 12000);
+    const j = await readJson(res);
+    if(!j || !j.ok || !Array.isArray(j.data)) return null;
+    const want = String(no).padStart(6, '0');
+    return j.data.some(r => r && r['No.'] && String(r['No.']).padStart(6, '0') === want);
+  } catch(e){ return null; }
+}
+
 let _saveNewInProgress = false;
 async function saveNew(){
   if(_saveNewInProgress) return;
@@ -2069,6 +2225,8 @@ async function saveNew(){
     _saveNewInProgress = false;
     if(saveBtn){ saveBtn.disabled=false; saveBtn.textContent='บันทึก'; }
   };
+  // [Fix V10-4] ต้องเห็นค่าเหล่านี้ใน catch ด้วย เพื่อไปตรวจสอบกับชีตว่าแถวขึ้นไปแล้วหรือยัง
+  let _newItem = null, _newNo = '', _newDesc = '', _newCode = '';
   try {
   const d = getFormData();
   if(!d.code){
@@ -2092,6 +2250,7 @@ async function saveNew(){
     return;
   }
 
+  _newNo = paddedNewNo; _newDesc = d.desc; _newCode = d.code;
   const newItem = {
     id: Date.now(),
     // [Fix 1.6] เลขแถวนี้เป็นแค่ค่าชั่วคราว ค่าจริงจะทับด้วย json.row จาก Apps Script หลังบันทึกสำเร็จ
@@ -2110,6 +2269,7 @@ async function saveNew(){
     notes:   d.notes  || '',
     stocks:  [], // สต็อกจะถูกบันทึกผ่านหน้า อัปเดตสต็อก เท่านั้น
   };
+  _newItem = newItem;
 
   // ส่งไปบันทึกที่ Google Sheet
   const payload = {
@@ -2138,22 +2298,33 @@ async function saveNew(){
   // ผู้ใช้จะเห็น "บันทึกไม่สำเร็จ" ทั้งที่จริงสำเร็จ พอกดบันทึกใหม่ (เช็ค No. ซ้ำผ่านเพราะ db ในเครื่อง
   // ยังไม่มีแถวนี้) จะได้สินค้าซ้ำ 2 แถวในชีต ทำให้ยอดสต็อกถูกนับสองเท่าทุกจุดที่สรุปยอด
   if(!res.ok) throw new Error('เซิร์ฟเวอร์ตอบผิดปกติ (HTTP ' + res.status + ') — กรุณาตรวจสอบในชีตก่อนกดบันทึกซ้ำ');
-  const json = await res.json();
+  const json = await readJson(res);
   if(!json.ok) throw new Error(json.error || 'บันทึกไม่สำเร็จ');
 
   // [Fix 1.6] ถ้า Apps Script ตอบเลขแถวจริงกลับมา ให้ใช้ค่านั้น (ไม่ตอบก็ปล่อย null
   // แล้ว saveEdit จะไม่ส่ง _row ให้ server หาแถวจาก No. เอง ซึ่งปลอดภัยกว่าเดา)
   if(json.row) newItem.row = json.row;
-  db.push(newItem);
-  updateCounts();
-
-  closeModal();
-  showToast('✅ เพิ่ม ' + d.no + ' — ' + d.desc + ' เรียบร้อย');
-  showPage('list');
-  filterBy(d.code);
-  window.scrollTo({top:0, behavior:'smooth'});
+  _finishSaveNew(newItem, d.no, d.desc, d.code, '✅ เพิ่ม ');
   } catch(e) {
-    showToast('❌ บันทึกไม่สำเร็จ: ' + e.message, 'error');
+    // [Fix V10-4] บั๊กร้ายแรง: Apps Script มีพฤติกรรมที่บางครั้ง redirect ไปหน้า HTML
+    // หรือตอบช้าเกิน timeout "หลังเขียนแถวลงชีตไปแล้วจริง"
+    // เดิมผู้ใช้จะเห็น "บันทึกไม่สำเร็จ" แล้วกดซ้ำ -> saveNew เช็ค No. ซ้ำจาก db ในเครื่องเท่านั้น
+    // (ซึ่งยังไม่มีแถวใหม่) จึงบันทึกผ่าน -> ได้สินค้าซ้ำ 2 แถวในชีต -> ยอดสต็อกถูกนับสองเท่าถาวร
+    // (ทดสอบจริง: ครั้งที่ 1 ตอบ HTTP 302 -> กดซ้ำ -> ชีตมี No. เดียวกัน 2 แถว)
+    // ตอนนี้ก่อนแจ้งว่าล้มเหลว จะไปถามชีตก่อนว่าแถวขึ้นไปแล้วหรือยัง
+    let _onSheet = null;
+    if(_newNo && _newItem){
+      if(saveBtn) saveBtn.textContent = 'กำลังตรวจสอบในชีต...';
+      _onSheet = await _itemExistsOnSheet(_newNo);
+    }
+    if(_onSheet === true){
+      _finishSaveNew(_newItem, _newNo, _newDesc, _newCode, '✅ บันทึกสำเร็จแล้ว (ยืนยันจากชีต) — ');
+    } else if(_onSheet === null && _newNo){
+      showToast('❌ บันทึกไม่สำเร็จ: ' + e.message + ' — และตรวจสอบในชีตไม่ได้ในตอนนี้ ' +
+                'กรุณาเปิดชีตดูก่อนว่า No. ' + _newNo + ' ขึ้นไปแล้วหรือยัง ก่อนกดบันทึกซ้ำ', 'error');
+    } else {
+      showToast('❌ บันทึกไม่สำเร็จ: ' + e.message, 'error');
+    }
   } finally {
     _saveNewInProgress = false;
     const _sb = document.querySelector('.modal-footer .btn-primary');
@@ -2161,14 +2332,60 @@ async function saveNew(){
   }
 }
 
-function showEditModal(id){
-  const r = db.find(x=>x.id===id); if(!r) return;
-  document.getElementById('modalBox').innerHTML = `<h2>แก้ไข — ${escHtml(r.no)}</h2>${formHTML(r)}<div class="modal-footer"><button class="btn btn-danger btn-sm" style="margin-right:auto" onclick="deleteItem(${r.id})">ลบ</button><button class="btn btn-outline" onclick="closeModal()">ยกเลิก</button><button class="btn btn-primary" onclick="saveEdit(${r.id})">บันทึก</button></div>`;
+// ═══════════════════════════════════════════════════════════════════════════
+// [Fix V10-1] บั๊กร้ายแรง: กดบันทึกแล้ว "แก้ไขผิดรายการ" ในชีต
+//
+// id ของสินค้าคือ "ลำดับแถวในชีต" (id: i+1 ใน loadFromSheet) และถูกสร้างใหม่ทุกครั้งที่
+// loadFromSheet() ทำงาน — ซึ่งทำงานอัตโนมัติทุกครั้งที่เปิดหน้าเว็บ (บรรทัดท้ายไฟล์) และทุกครั้งที่กด 🔄
+// ถ้าลำดับแถวในชีตเปลี่ยน (มีคนแทรก/ลบแถวในชีต หรือกดลบสินค้าในแอป) id ทุกตัวจะเลื่อน
+// แต่ปุ่มใน modal ที่เปิดค้างไว้ยังผูกกับ id ชุดเก่า
+//
+// ทดสอบเจอจริง: เปิด modal แก้ไข 001235 -> ระบบโหลดข้อมูลใหม่เบื้องหลัง -> กดบันทึก
+//   -> POST ส่ง _findByNo = 001234  => สินค้า "Corn Meal" ที่ไม่เกี่ยวเลย ถูกเปลี่ยนทั้งรหัสและชื่อทิ้ง
+//   -> และประวัติสต็อกของ Corn Meal กลายเป็นข้อมูลกำพร้าทันที
+//
+// ทางแก้: ทุกจุดที่เปิด modal จะส่ง "รหัส No. ที่ผู้ใช้เห็นอยู่บนจอ" มาด้วย แล้วหาสินค้าจากรหัสนั้นก่อน
+// ถ้าหาไม่เจอ/ไม่ตรงกัน = ข้อมูลถูกโหลดใหม่ไปแล้ว -> หยุดทันที ไม่เดา
+function _resolveItem(id, expectNo){
+  const byId = db.find(x => x.id === id) || null;
+  if(expectNo == null) return byId;                       // ผู้เรียกไม่ได้ระบุ = ใช้ id แบบเดิม
+  const want = String(expectNo);
+  if(byId && byId.no === want) return byId;               // ตรงอยู่แล้ว ปกติที่สุด
+  if(!want) return null;                                  // สินค้าที่ No. ว่าง แยกไม่ออก -> ไม่เดา
+  return db.find(x => x.no === want) || null;             // id เลื่อนไปแล้ว -> หาจากรหัสเดิม
+}
+function _staleItemToast(){
+  showToast('⚠️ ข้อมูลถูกโหลดใหม่ไปแล้วระหว่างที่เปิดหน้านี้ค้างไว้ — ยกเลิกการบันทึกเพื่อกันแก้ผิดรายการ กรุณาเปิดรายการที่ต้องการแก้อีกครั้ง', 'error');
+}
+
+// [Fix V10-4] ขั้นตอน "บันทึกสำเร็จ" แยกออกมา เพื่อให้เรียกได้ทั้งกรณีปกติ
+// และกรณีที่ตอบกลับพัง แต่ตรวจสอบแล้วพบว่าแถวขึ้นชีตไปเรียบร้อยแล้วจริง
+function _finishSaveNew(newItem, no, desc, code, prefix){
+  if(!db.some(x => x.no === newItem.no)) db.push(newItem);
+  updateCounts();
+  closeModal();
+  showToast((prefix || '✅ เพิ่ม ') + no + ' — ' + desc + ' เรียบร้อย');
+  showPage('list');
+  filterBy(code);
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function showEditModal(id, expectNo){
+  const r = _resolveItem(id, expectNo);
+  if(!r){ _staleItemToast(); closeModal(); return; }
+  // [Fix V10-1] จำรหัสและรุ่นของ db ไว้ ใช้ตรวจตอนกดบันทึก
+  window._editCtx = {no: r.no, id: r.id, gen: _dbGen};
+  document.getElementById('modalBox').innerHTML = `<h2>แก้ไข — ${escHtml(r.no)}</h2>${formHTML(r)}<div class="modal-footer"><button class="btn btn-danger btn-sm" style="margin-right:auto" onclick="deleteItem(${r.id}, '${escJs(r.no)}')">ลบ</button><button class="btn btn-outline" onclick="closeModal()">ยกเลิก</button><button class="btn btn-primary" onclick="saveEdit(${r.id}, '${escJs(r.no)}')">บันทึก</button></div>`;
   document.getElementById('modalBg').classList.add('open');
 }
 
-async function saveEdit(id){
-  const r = db.find(x=>x.id===id); if(!r) return;
+async function saveEdit(id, expectNo){
+  // [Fix V10-1] ถ้า db ถูกโหลดใหม่หลังเปิด modal ห้ามเชื่อ id เดิม ต้องยืนยันด้วยรหัส No. ก่อน
+  const _ctx = window._editCtx;
+  const _want = (expectNo != null) ? expectNo : (_ctx ? _ctx.no : null);
+  const r = _resolveItem(id, _want);
+  if(!r || (_want != null && r.no !== String(_want))){ _staleItemToast(); closeModal(); return; }
+  id = r.id;
   const editBtn = document.querySelector('.modal-footer .btn-primary');
   if(editBtn){ editBtn.disabled=true; editBtn.textContent='กำลังบันทึก...'; }
   try {
@@ -2230,7 +2447,7 @@ async function saveEdit(id){
       redirect: 'follow',
     });
     if(!res.ok) throw new Error('เซิร์ฟเวอร์ตอบผิดปกติ (HTTP ' + res.status + ')');
-    const json = await res.json();
+    const json = await readJson(res);
     if(!json.ok) throw new Error(json.error || 'แก้ไขไม่สำเร็จ');
 
     // [Fix R-6] เดิมเปลี่ยนเลข No. ในประวัติ MOCK_DAILY (บล็อกด้านล่าง) ก่อนรู้ผลจากเซิร์ฟเวอร์
@@ -2279,7 +2496,7 @@ async function saveEdit(id){
               body: JSON.stringify({ action:'saveDaily', token:API_TOKEN, date:day.date,
                                      date_th:day.date_th, recorded_by:day.recorded_by, entries:day.entries })
             });
-            const j2 = await res2.json();
+            const j2 = await readJson(res2);
             if(!j2.ok) throw new Error(j2.error||'sync ไม่สำเร็จ');
             _clearPending(dt);
           } catch(err){ _markPending(dt); }
@@ -2290,15 +2507,19 @@ async function saveEdit(id){
     updateCounts();
     closeModal();
     showToast('✅ แก้ไข ' + newNo + ' เรียบร้อย');
-    renderList();
+    // [Fix V10-13] เดิมเรียก renderList() ตรง ๆ ทำให้เนื้อหากลายเป็นหน้ารายการวัตถุดิบ
+    // ทั้งที่ breadcrumb / เมนูซ้าย / _currentPageName ยังเป็นหน้าเดิม (เช่น Dashboard)
+    // แล้วกด 🔄 ทีหลังจะเด้งกลับหน้าเดิมแบบไม่มีเหตุผล
+    if((window._currentPageName || 'list') === 'list') renderList();
   } catch(e) {
     showToast('❌ แก้ไขไม่สำเร็จ: ' + e.message, 'error');
     if(editBtn){ editBtn.disabled=false; editBtn.textContent='บันทึก'; }
   }
 }
 
-async function deleteItem(id){
-  const r = db.find(x=>x.id===id); if(!r) return;
+async function deleteItem(id, expectNo){
+  const r = _resolveItem(id, expectNo);   // [Fix V10-1]
+  if(!r){ _staleItemToast(); return; }
   // [Fix V7-6] เดิมเตือนแค่ "ยืนยันการลบรายการนี้?" แต่ประวัติรายวันไม่ได้ถูกลบไปด้วย
   // ถ้าวันหลังเพิ่ม No. เดิมกลับเข้ามาใหม่ ยอดสะสมเก่าทั้งหมดจะฟื้นคืนมาทันทีแบบไม่มีใครคาดคิด
   const _histCount = MOCK_DAILY.reduce((n, d) =>
@@ -2308,20 +2529,11 @@ async function deleteItem(id){
       'ประวัติจะยังคงอยู่ในระบบ (ไม่ถูกลบ) และถ้าเพิ่มรหัส ' + r.no + ' กลับเข้ามาใหม่ภายหลัง\n' +
       'ยอดสต็อกเดิมทั้งหมดจะกลับมาแสดงอีกครั้ง' : '');
   if(!await customConfirm(_delMsg)) return;
-  try {
-    const payload = { action: 'deleteItem', token: API_TOKEN, 'No.': r.no };
-    const res = await fetchTO(GS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(payload),
-      redirect: 'follow',
-    });
-    const json = await res.json();
-    if(!json.ok) throw new Error(json.error || 'ลบไม่สำเร็จ');
 
-    // [Fix 1.6] ในชีตแถวเลื่อนขึ้น 1 แถวหลังลบ ถ้าไม่ปรับตาม การแก้ไขครั้งถัดไปจะไปทับรายการอื่น
+  // [Fix 1.6] ในชีตแถวเลื่อนขึ้น 1 แถวหลังลบ ถ้าไม่ปรับตาม การแก้ไขครั้งถัดไปจะไปทับรายการอื่น
+  const _applyLocalDelete = () => {
     const deletedRow = r.row;
-    db = db.filter(x=>x.id!==id);
+    db = db.filter(x=>x.id!==r.id);
     if(deletedRow) db.forEach(x => { if(x.row && x.row > deletedRow) x.row--; });
     // [H-7] ถ้าไม่ทราบแถวที่ลบ เลขแถวที่จำไว้ทั้งหมดเชื่อถือไม่ได้แล้ว ต้องล้างทิ้ง
     // ไม่งั้นการแก้ไขครั้งถัดไปอาจส่ง _row ที่เลื่อนไปแล้วขึ้นชีต
@@ -2332,15 +2544,41 @@ async function deleteItem(id){
     _clearDailyIndex();
     updateCounts();
     closeModal();
+    // [Fix V10-13] วาดหน้ารายการใหม่เฉพาะตอนที่ผู้ใช้อยู่หน้านั้นจริง
+    if((window._currentPageName || 'list') === 'list') renderList();
+  };
+
+  try {
+    const payload = { action: 'deleteItem', token: API_TOKEN, 'No.': r.no };
+    const res = await fetchTO(GS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload),
+      redirect: 'follow',
+    });
+    const json = await readJson(res);
+    if(!json.ok) throw new Error(json.error || 'ลบไม่สำเร็จ');
+    _applyLocalDelete();
     showToast('✅ ลบ ' + (r.desc||r.no) + ' เรียบร้อย');
-    renderList();
   } catch(e) {
-    showToast('❌ ลบไม่สำเร็จ: ' + e.message, 'error');
+    // [Fix V10-8] เดิมจุดนี้ไม่เช็ค res.ok และไม่ตรวจย้อนหลังเลย (ต่างจาก saveNew/saveEdit ที่มี Fix R-7)
+    // ถ้า Apps Script ลบแถวสำเร็จแล้วแต่ตอบเป็นหน้า HTML ผู้ใช้จะเห็น
+    // "❌ ลบไม่สำเร็จ: Unexpected token '<'" แล้วสินค้าที่ถูกลบไปแล้วยังค้างอยู่บนหน้าจอ
+    // ตอนนี้ไปถามชีตก่อนว่าแถวหายไปจริงหรือยัง
+    const _still = await _itemExistsOnSheet(r.no);
+    if(_still === false){
+      _applyLocalDelete();
+      showToast('✅ ลบ ' + (r.desc||r.no) + ' เรียบร้อย (ยืนยันจากชีต)');
+    } else {
+      showToast('❌ ลบไม่สำเร็จ: ' + e.message +
+        (_still === null ? ' — ตรวจสอบในชีตไม่ได้ในตอนนี้ กรุณากด 🔄 แล้วตรวจดูอีกครั้ง' : ''), 'error');
+    }
   }
 }
 
-function showDetail(id){
-  const r = db.find(x=>x.id===id); if(!r) return;
+function showDetail(id, expectNo){
+  const r = _resolveItem(id, expectNo);   // [Fix V10-1]
+  if(!r){ _staleItemToast(); return; }
 
   // [Fix 1.3] เดิมรวมยอดเองโดยทิ้ง kgPerUnit ตอนนี้ใช้ getStockByNoAndLoc ตัวเดียวกับหน้าอื่น
   const accStocks = getStockByNoAndLoc(r.no).map(s => ({
@@ -2427,7 +2665,7 @@ function showDetail(id){
     ${histHTML}
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal()">ปิด</button>
-      <button class="btn btn-primary" onclick="closeModal();showEditModal(${r.id})">แก้ไข</button>
+      <button class="btn btn-primary" onclick="closeModal();showEditModal(${r.id}, '${escJs(r.no)}')">แก้ไข</button>
     </div>`;
   document.getElementById('modalBg').classList.add('open');
 }
@@ -2585,13 +2823,13 @@ document.getElementById('modalBg').addEventListener('click', e=>{
 function getWeightPerUnit(no){
   const item = db.find(r => r.no === no);
   if(!item || !item.col2) return null;
-  const w = parseFloat(item.col2);
+  const w = toNum(item.col2);
   return isNaN(w) ? null : w;
 }
 
 // [FIX-A4] น้ำหนักต่อหน่วยที่ "ใช้จริง" ในการคำนวณของแถวนั้น (ใช้โชว์ในตารางประวัติ)
 function _rowWpu(e){
-  if(e.kgPerUnit && parseFloat(e.kgPerUnit) > 0) return parseFloat(e.kgPerUnit);
+  if(e.kgPerUnit && toNum(e.kgPerUnit) > 0) return toNum(e.kgPerUnit);
   if(e.unit === 'bigbag' || e.unit === 'ตัน' || e.unit === 'ton') return 1000;
   if(e.unit === 'กก.' || e.unit === 'kg') return null;   // 1 กก. ต่อ กก. ไม่ต้องโชว์
   if(e.unit === 'กระสอบ' || e.unit === 'bag') return getWeightPerUnit(e.no);
@@ -2608,18 +2846,18 @@ function _snapTag(e){
 }
 
 // แปลง unit เป็น กก. ถ้าทำได้
-function r2(n){ return parseFloat(parseFloat(n).toFixed(2)); }
+function r2(n){ return toNum(toNum(n).toFixed(2)); }
 
 function convertToKg(qty, unit, no, overrideWpu){
   // คืน "ตัวเลข" = แปลงเป็น กก. ได้  |  คืน null = ไม่รู้น้ำหนักต่อหน่วย จึงแปลงไม่ได้
   // (เดิมหน่วย กก. คืน null ทำให้หลายที่เผลอเอาจำนวนดิบไปบวกเป็น กก.)
   // [Fix 2.13] ถ้า qty ไม่ใช่ตัวเลข ต้องคืน null ไม่ใช่ NaN
   // เดิมคืน NaN ซึ่งผ่านการเช็ค k !== null ไปได้ แล้วทำให้ยอดรวมทั้งหน้าเป็น NaN
-  const _q = parseFloat(qty);
+  const _q = toNum(qty);
   if(isNaN(_q)) return null;
   qty = _q;
   if(unit === 'กก.' || unit === 'kg') return r2(qty);
-  if(overrideWpu && parseFloat(overrideWpu) > 0) return r2(qty * parseFloat(overrideWpu));
+  if(overrideWpu && toNum(overrideWpu) > 0) return r2(qty * toNum(overrideWpu));
   const wpuMap = {
     'กระสอบ': getWeightPerUnit(no),
     'bag':     getWeightPerUnit(no),
@@ -2645,10 +2883,10 @@ function formatQty(qty, unit, no, overrideWpu){
   if(kg !== null){
     // หา wpu
     const wpuMap = {'ตัน':1000,'ton':1000,'bigbag':1000};
-    let wpu = (overrideWpu && parseFloat(overrideWpu) > 0) ? parseFloat(overrideWpu) : wpuMap[unit];
+    let wpu = (overrideWpu && toNum(overrideWpu) > 0) ? toNum(overrideWpu) : wpuMap[unit];
     if(!wpu){
       const item = db.find(r => r.no === no);
-      wpu = item && item.col2 ? parseFloat(item.col2) : null;
+      wpu = item && item.col2 ? toNum(item.col2) : null;
     }
     if(wpu){
       return `${qty.toLocaleString()} ${u} × ${wpu} กก. = <span style="color:#1a5276;font-weight:700">${kg.toLocaleString()} กก.</span>`;
@@ -2968,7 +3206,7 @@ function _updateSERowPreview(itemId, i){
   const s = (window._seStocks[itemId]||[])[i];
   const preview = document.getElementById('se_preview_'+itemId+'_'+i);
   if(!s || !preview) return;
-  const qty = parseFloat(s.qty);
+  const qty = toNum(s.qty);
   if(!qty || !s.unit){ preview.innerHTML=''; return; }
   const item = db.find(x=>x.id===itemId);
   const no = item ? item.no : '';
@@ -3048,6 +3286,63 @@ if(!window._seSaving) window._seSaving = {};
 // ถ้าคนที่ 1 เปิดแอปไว้ตั้งแต่เช้า แล้วคนที่ 2 บันทึกตอนสาย พอคนที่ 1 กดบันทึกตอนบ่าย
 // ข้อมูลของคนที่ 2 จะถูกทับหายไปทั้งหมด (ปัญหาใหญ่สุดของระบบนี้เมื่อใช้กันหลายคน)
 // ทางแก้: ก่อนส่ง ให้ดึงข้อมูลวันนั้นจากชีตมาเทียบ แล้วเติมแถวที่เครื่องเรายังไม่มีกลับเข้าไปก่อน
+// ═══════════════════════════════════════════════════════════════════════════
+// [Fix V10-2 / V10-3] บั๊กร้ายแรง: ยอด "↺ นับสต็อกใหม่" และน้ำหนักต่อหน่วยที่กรอกเอง
+// หายไปทุกครั้งที่โหลดข้อมูลใหม่จากชีต
+//
+// อาการที่ทดสอบเจอจริง:
+//   • ยอดเดิม 1,000 กก. -> กด ↺ นับใหม่ 4 กระสอบ -> ได้ 200 กก. (ถูก)
+//     -> กด 🔄 -> กลายเป็น 1,200 กก. (ยอดเก่ากลับมาบวกใหม่ทั้งหมด)
+//   • หน่วย "ถัง" กรอก 30 กก./ถัง × 3 = 90 กก. -> กด 🔄 -> 0 กก. + ขึ้น ⚠️ แปลงไม่ได้
+//
+// สาเหตุ: loadFromSheet() เอา entries จากชีตมาทับ MOCK_DAILY ทั้งก้อน โดยไม่มีการรักษา
+// ฟิลด์ที่ชีตอาจไม่ได้เก็บไว้ (snap / kgPerUnit / note / images) เลย — ต่างจาก
+// _mergeServerDay() ที่มีกลไก _keepSnap/_keepImgs ป้องกันไว้แล้ว แต่กลไกนั้นไม่ถูกใช้ตอนโหลดหน้า
+//
+// ทางแก้: จำ "ฟิลด์เสริม" ของแถวในเครื่องไว้ก่อนทับ แล้วเอากลับไปแปะให้แถวที่ตรงกัน
+// สำคัญ: ลายเซ็นที่ใช้จับคู่ต้อง *ไม่รวม* kgPerUnit เพราะ kgPerUnit เองก็คือฟิลด์ที่อาจหายไป
+// (ถ้าใส่ไว้ในลายเซ็นจะจับคู่ไม่ติดเลย ซึ่งเป็นเหตุที่ _keepSnap เดิมกู้คืนไม่สำเร็จ)
+function _entryCoreSig(e){
+  if(!e) return '';
+  const q = toNum(e.qty);
+  return [e.no||'', normLoc(e.location||''), e.storage||'', isNaN(q)?'':String(q), e.unit||''].join('|');
+}
+// เก็บฟิลด์เสริมของทุกแถวในเครื่องไว้ (นับจำนวนด้วย เผื่อแถวลายเซ็นซ้ำกันในวันเดียว)
+function _snapshotDailyMeta(days){
+  const map = {};
+  (days || []).forEach(d => {
+    if(!d || !Array.isArray(d.entries)) return;
+    d.entries.forEach(e => {
+      if(!e) return;
+      const k = d.date + '##' + _entryCoreSig(e);
+      if(!map[k]) map[k] = [];
+      map[k].push({
+        snap: !!e.snap,
+        kgPerUnit: (e.kgPerUnit != null && String(e.kgPerUnit) !== '') ? e.kgPerUnit : '',
+        note: e.note || '',
+        images: (e.images && e.images.length) ? e.images : null,
+      });
+    });
+  });
+  return map;
+}
+// เอาฟิลด์เสริมกลับไปแปะให้แถวที่ชีตส่งกลับมา (เฉพาะช่องที่ชีตไม่ได้ส่งค่ามา)
+function _restoreDailyMeta(day, map){
+  if(!day || !Array.isArray(day.entries) || !map) return 0;
+  let restored = 0;
+  day.entries.forEach(e => {
+    if(!e) return;
+    const bucket = map[day.date + '##' + _entryCoreSig(e)];
+    if(!bucket || !bucket.length) return;
+    const meta = bucket.shift();
+    if(meta.snap && !e.snap){ e.snap = true; restored++; }
+    if(meta.kgPerUnit && !(toNum(e.kgPerUnit) > 0)){ e.kgPerUnit = meta.kgPerUnit; restored++; }
+    if(meta.note && !e.note){ e.note = meta.note; restored++; }
+    if(meta.images && (!e.images || !e.images.length)){ e.images = meta.images; restored++; }
+  });
+  return restored;
+}
+
 function _entrySig(e){
   return [e.no||'', normLoc(e.location||''), e.storage||'', String(e.qty),
           e.unit||'', String(e.kgPerUnit||''), e.note||''].join('|');
@@ -3063,7 +3358,7 @@ async function _mergeServerDay(day){
   try {
     // ส่ง &date= ไปด้วย เพื่อให้ Apps Script รุ่นใหม่คืนเฉพาะวันเดียว (รุ่นเก่าจะเมินพารามิเตอร์นี้เอง)
     const res = await fetchTO(GS_URL + '?action=getDaily&token=' + API_TOKEN + '&date=' + encodeURIComponent(day.date), {}, 12000);
-    const j = await res.json();
+    const j = await readJson(res);
     if(!j || !j.ok || !Array.isArray(j.data)) return {ok:false, added:0};
     const srv = j.data.filter(d => d && d.date && Array.isArray(d.entries))
                       .find(d => normDateStr(d.date) === day.date);
@@ -3087,38 +3382,47 @@ async function _mergeServerDay(day){
       let _newCount = 0;
       srv.entries.forEach(e => { if(!e) return; const k = _entrySig(e); if(_localSigs[k] > 0) _localSigs[k]--; else _newCount++; });
 
-      // เผื่อกรณีที่ชีตไม่ได้เก็บบางฟิลด์กลับมาให้ (เช่น ธง snap ของโหมด "แทนที่ยอดเดิม" หรือรูป)
-      // ให้คงค่าเดิมจากแถวในเครื่องที่ลายเซ็นตรงกันไว้ กันยอดสะสมเพี้ยนเพราะธง snap หลุดหาย
-      const _keepSnap = {}, _keepImgs = {};
-      (day.entries||[]).forEach(e => {
-        if(!e) return;
-        const k = _entrySig(e);
-        if(e.snap) _keepSnap[k] = true;
-        if(e.images && e.images.length) _keepImgs[k] = e.images;
-      });
-
-      day.entries = srv.entries.filter(e => e).map(e => {
-        const o = Object.assign({}, e, {location: normLoc(e.location||'')});
-        const k = _entrySig(o);
-        if(!o.snap && _keepSnap[k]) o.snap = true;
-        if((!o.images || !o.images.length) && _keepImgs[k]) o.images = _keepImgs[k];
-        return o;
-      });
+      // เผื่อกรณีที่ชีตไม่ได้เก็บบางฟิลด์กลับมาให้ (ธง snap ของโหมด "แทนที่ยอดเดิม" / รูป /
+      // น้ำหนักต่อหน่วยรายแถว / หมายเหตุ) ให้คงค่าเดิมจากแถวในเครื่องที่ตรงกันไว้
+      // [Fix V10-2/V10-3] เดิมจับคู่ด้วย _entrySig ซึ่ง *มี kgPerUnit อยู่ในลายเซ็น*
+      // ถ้าชีตไม่เก็บ kgPerUnit ลายเซ็นจะไม่ตรงกันเลย -> กู้ธง snap ไม่สำเร็จ -> ยอดเก่ากลับมาบวกใหม่
+      // ตอนนี้ใช้ _entryCoreSig ที่ไม่รวม kgPerUnit และกู้คืน kgPerUnit/note ให้ด้วย
+      const _meta = _snapshotDailyMeta([day]);
+      day.entries = srv.entries.filter(e => e).map(e =>
+        Object.assign({}, e, {location: normLoc(e.location||'')}));
+      _restoreDailyMeta(day, _meta);
       _clearStockCache(); _clearDailyIndex();
       return {ok:true, added:_newCount, replaced:true};
     }
 
-    const localCount = {};
-    (day.entries||[]).forEach(e => { const k = _entrySig(e); localCount[k] = (localCount[k]||0) + 1; });
+    const localCount = {}, localCore = {};
+    (day.entries||[]).forEach(e => {
+      const k = _entrySig(e); localCount[k] = (localCount[k]||0) + 1;
+      // [Fix V10-2/V10-3] ตัวจับคู่สำรองแบบไม่รวม kgPerUnit — ถ้าชีตไม่เก็บ kgPerUnit
+      // แถวเดียวกันจะมีลายเซ็นไม่ตรงกัน แล้วถูกเข้าใจผิดว่าเป็น "แถวใหม่ของเพื่อนร่วมงาน"
+      // ผลคือถูก push เข้ามาซ้ำ = ยอดของวันนั้นบวมขึ้นเรื่อย ๆ แบบไม่มีใครจับได้
+      const c = _entryCoreSig(e); localCore[c] = (localCore[c]||0) + 1;
+    });
     // แถวที่ผู้ใช้ลบไปแล้ว (แต่ยังส่งขึ้นชีตไม่สำเร็จ) ต้องไม่ถูกดึงกลับมา
     const delSigs = (_getDeletedSigs()[day.date] || []).slice();
+    // _entrySig = no|location|storage|qty|unit|kgPerUnit|note  -> 5 ช่องแรกคือ core sig
+    const delCore = delSigs.map(sig => sig.split('|').slice(0, 5).join('|'));
     const add = [];
     srv.entries.forEach(e => {
       if(!e) return;
       const k = _entrySig(e);
-      if(localCount[k] > 0){ localCount[k]--; return; }
+      if(localCount[k] > 0){
+        localCount[k]--;
+        const ck = _entryCoreSig(e);
+        if(localCore[ck] > 0) localCore[ck]--;
+        return;
+      }
+      const c = _entryCoreSig(e);
+      if(localCore[c] > 0){ localCore[c]--; return; }   // [Fix V10-2] มีแถวนี้ในเครื่องแล้ว (kgPerUnit หายไปจากชีต)
       const di = delSigs.indexOf(k);
-      if(di >= 0){ delSigs.splice(di, 1); return; }
+      if(di >= 0){ delSigs.splice(di, 1); delCore.splice(di, 1); return; }
+      const dc = delCore.indexOf(c);
+      if(dc >= 0){ delSigs.splice(dc, 1); delCore.splice(dc, 1); return; }
       add.push(Object.assign({}, e, {location: normLoc(e.location||'')}));
     });
     if(add.length){
@@ -3139,6 +3443,16 @@ async function saveStockItem(itemId, btnEl){
   const r = db.find(x => x.id === itemId);
   if(!r) return;
 
+  // [Fix V10-7] บั๊กร้ายแรง: ทุกหน้าคิดยอดสต็อกจาก "รหัส No." เป็นหลัก (ดู getStockByNo)
+  // สินค้าทุกตัวที่ช่อง No. ว่างในชีตจะได้ no:'' เหมือนกันหมด สต็อกจึงถูกรวมเป็นก้อนเดียว
+  // (ทดสอบจริง: บันทึก 3 กระสอบให้ "สินค้า A" -> สินค้า B ที่ไม่เกี่ยวเลยขึ้นยอด 150 กก. ตามไปด้วย)
+  // เดิมมีแค่แถบเตือน แต่ยังบันทึกได้ และบันทึกไปแล้วแยกกลับไม่ได้ -> ต้องบล็อกไปเลย
+  if(!r.no){
+    showToast('❌ สินค้านี้ยังไม่มีรหัส No. ในชีต จึงบันทึกสต็อกไม่ได้ — ยอดจะไปปนกับสินค้าอื่น' +
+              'ที่ช่อง No. ว่างเหมือนกัน กรุณาใส่รหัส No. ในชีตก่อน แล้วกด 🔄', 'error');
+    return;
+  }
+
   // ป้องกันกดซ้ำ — ใช้ flag กันไว้ก่อน แล้วอ้างอิงปุ่มที่ส่งเข้ามาโดยตรง (แม่นยำกว่า querySelector หาจาก onclick string)
   if(window._seSaving[itemId]) return;
   window._seSaving[itemId] = true;
@@ -3158,22 +3472,31 @@ async function saveStockItem(itemId, btnEl){
   showToast('⏳ กำลังบันทึก ' + (r.desc||r.no) + ' ...');
 
   try {
-    const newEntries = (window._seStocks[itemId]||[]).filter(s => s.qty && parseFloat(s.qty) > 0);
+    const newEntries = (window._seStocks[itemId]||[]).filter(s => s.qty && toNum(s.qty) > 0);
     // validate qty
     for(const s of newEntries){
-      const qty = parseFloat(s.qty);
+      const qty = toNum(s.qty);
       if(isNaN(qty) || qty <= 0){ showToast('จำนวนต้องเป็นตัวเลขที่มากกว่า 0', 'error'); return; }
       if(qty > 999999){ showToast('จำนวนดูเหมือนผิดปกติ (' + qty.toLocaleString() + ') กรุณาตรวจสอบ', 'error'); return; }
       if(!s.unit || !s.unit.trim()){ showToast('กรุณาเลือกหน่วย', 'error'); return; }
       // [H-5] เดิมบันทึกได้โดยไม่เลือก Location แล้วแถวนั้นจะไม่ขึ้นในตัวกรอง Location เลย
       if(!s.location || !s.location.trim()){ showToast('กรุณาเลือก Location', 'error'); return; }
-      if(s.unit === 'กระสอบ' && (!s.kgPerUnit || parseFloat(s.kgPerUnit) <= 0)){
+      if(s.unit === 'กระสอบ' && (!s.kgPerUnit || toNum(s.kgPerUnit) <= 0)){
         showToast('กรุณากรอกน้ำหนักต่อกระสอบ (กก./กระสอบ)', 'error');
         return;
       }
-      if(s.unit === 'bigbag' && (!s.kgPerUnit || parseFloat(s.kgPerUnit) <= 0)){
+      if(s.unit === 'bigbag' && (!s.kgPerUnit || toNum(s.kgPerUnit) <= 0)){
         s.kgPerUnit = '1000'; // ค่ามาตรฐาน เผื่อไม่ได้ตั้งไว้
       }
+    }
+    // [Fix V10-11] เดิมแถวที่กรอกจำนวนติดลบ (เช่น -5) ถูกตัวกรอง qty > 0 ด้านบนตัดทิ้งเงียบ ๆ
+    // แล้วขึ้นข้อความ "กรุณากรอกจำนวนก่อนบันทึก" ทั้งที่ผู้ใช้กรอกจำนวนไปแล้ว — ชวนสับสนมาก
+    const _badQty = (window._seStocks[itemId]||[]).filter(sr =>
+      sr && String(sr.qty == null ? '' : sr.qty).trim() !== '' && !(toNum(sr.qty) > 0));
+    if(_badQty.length){
+      showToast('⚠️ จำนวนต้องเป็นตัวเลขที่มากกว่า 0 — ระบบนี้ยังไม่รองรับการบันทึกยอดติดลบ (เบิกออก) ' +
+                'ถ้าต้องการลดยอด ให้ใช้โหมด "↺ แทนที่ยอดเดิม (นับสต็อกใหม่)"', 'error');
+      return;
     }
     if(!newEntries.length){
       showToast('กรุณากรอกจำนวนก่อนบันทึก', 'error');
@@ -3184,7 +3507,7 @@ async function saveStockItem(itemId, btnEl){
     // เดิมถูกกรองทิ้งเงียบ ๆ (ตัวกรอง s.qty > 0 ด้านบน) ผู้ใช้เข้าใจว่าบันทึกครบทุกแถวแล้ว
     // ตอนนี้หยุดไว้ก่อนแล้วบอกให้ชัด จะได้ไม่มีของหายไปจากบันทึกโดยไม่รู้ตัว
     const _incomplete = (window._seStocks[itemId]||[]).filter(s =>
-      s && !(s.qty && parseFloat(s.qty) > 0) &&
+      s && !(s.qty && toNum(s.qty) > 0) &&
       ((s.location||'').trim() || (s.unit||'').trim() || (s.loc||'').trim() || (s.note||'').trim()));
     if(_incomplete.length){
       showToast('⚠️ มี ' + _incomplete.length + ' แถวที่กรอกข้อมูลไว้แต่ยังไม่ได้ใส่จำนวน — ' +
@@ -3240,7 +3563,7 @@ async function saveStockItem(itemId, btnEl){
         todayRecord.entries.push({
           no: r.no, desc: r.desc, code: r.code,
           location: s.location||'', storage: s.loc||'',
-          qty: parseFloat(s.qty), unit: s.unit||'',
+          qty: toNum(s.qty), unit: s.unit||'',
           kgPerUnit: s.kgPerUnit||'',
           // [Fix 1.2] เฉพาะแถวแรกของชุดที่ถูกทำเครื่องหมายว่า "นับใหม่"
           ...(mode === 'replace' && i === 0 ? {snap:true} : {}),
@@ -3273,7 +3596,7 @@ async function saveStockItem(itemId, btnEl){
           body: JSON.stringify(payload),
           redirect: 'follow',
         });
-        const json = await res.json();
+        const json = await readJson(res);
         if(!json.ok) throw new Error(json.error || 'ส่งข้อมูลไม่สำเร็จ');
       } catch(e) {
         syncOk = false; syncErrMsg = e.message;
@@ -3401,7 +3724,7 @@ function renderStockView(container){
         const unit = s.unit || 'หน่วย';
         const key = unit + '|' + (s.kgPerUnit || '');
         if(!totalByUnit[key]) totalByUnit[key] = {unit, kgPerUnit: s.kgPerUnit || '', qty: 0};
-        totalByUnit[key].qty = r2(totalByUnit[key].qty + (parseFloat(s.qty)||0));
+        totalByUnit[key].qty = r6(totalByUnit[key].qty + (toNum(s.qty)||0));   // [Fix V10-12]
       });
       return `
       <div style="background:white;border-radius:6px;padding:12px 14px;margin-bottom:8px;border:1px solid #e8f0f8">
@@ -3428,7 +3751,7 @@ function renderStockView(container){
               <div style="color:#444">📍 ${escHtml(s.location)||'-'}</div>
               <div style="color:#888;font-size:11px">${escHtml(s.storage)||'-'}</div>
             </div>
-            <div style="font-weight:600;color:#2874a6;white-space:nowrap;text-align:right">${formatQty(parseFloat(s.qty), s.unit||'', r.no, s.kgPerUnit)}</div>
+            <div style="font-weight:600;color:#2874a6;white-space:nowrap;text-align:right">${formatQty(toNum(s.qty), s.unit||'', r.no, s.kgPerUnit)}</div>
           </div>`).join('')}
         </div>
       </div>`;
@@ -3493,7 +3816,9 @@ function _loadDailyData(){
       // ไม่งั้นเปิดแอปใหม่จะหายไป แล้ว loadFromSheet ดึงข้อมูลเก่ากลับมา = ลบไม่ติดถาวร
       const _pend = _getPending();
       if(Array.isArray(data)) return data.filter(d =>
-        d && Array.isArray(d.entries) && (d.entries.length > 0 || _pend.indexOf(d.date) >= 0));
+        d && Array.isArray(d.entries) && (d.entries.length > 0 || _pend.indexOf(d.date) >= 0))
+        // [Fix V10-14] เติม date_th ให้ครบ กันคำว่า "undefined" ไปโผล่บนหน้าจอ
+        .map(d => { if(!d.date_th) d.date_th = _formatThDate(d.date); return d; });
     }
   } catch(e) {}
   return [];
@@ -3547,6 +3872,9 @@ function _applyMobileFixes(){
 }
 window.addEventListener('resize', _applyMobileFixes);
 window.addEventListener('orientationchange', _applyMobileFixes);
+// [Fix V10-9] ข้อความป้าย "รอส่ง" ยาว/สั้นตามความกว้างจอ ต้องวาดใหม่เมื่อหมุนจอ
+window.addEventListener('resize', _debounce(() => _paintPending(), 200));
+window.addEventListener('orientationchange', () => _paintPending());
 
 // [H-6] renderListTable อ่านความกว้างจอแค่ตอน render ครั้งนั้น พอย่อ/ขยายจอ (หรือหมุนแท็บเล็ต)
 // หน้ารายการวัตถุดิบจะค้างอยู่ในโหมดเดิม ต้องวาดใหม่เมื่อข้ามเส้น 768px
@@ -3648,7 +3976,7 @@ function renderDaily(container){
     filteredEntries.forEach(e => {
       const key = e.no + '||' + e.unit;
       if(!summary[key]) summary[key] = {no:e.no, desc:e.desc, code:e.code, unit:e.unit, total:0, rows:[]};
-      summary[key].total = r2(summary[key].total + _num(e.qty));   // [FIX-A2]
+      summary[key].total = r6(summary[key].total + _num(e.qty));   // [FIX-A2] + [Fix V10-12]
       summary[key].rows.push(e);
     });
 
@@ -3707,7 +4035,7 @@ function renderDaily(container){
               // [Fix 2.7] เดิมเอา kgPerUnit ของแถวแรกไปคูณกับยอดรวมทุกแถว
               // ถ้าวันเดียวกันรับ 2 ล็อตที่น้ำหนักต่อกระสอบไม่เท่ากัน หัวการ์ดจะไม่ตรงกับตารางข้างล่าง
               // ตอนนี้รวม กก. ทีละแถวเสมอ และโชว์ "× wpu" เฉพาะตอนที่ทุกแถวใช้ค่าเดียวกัน
-              const _wpus = [...new Set(s.rows.map(row => String(row.kgPerUnit||'')).filter(v => parseFloat(v) > 0))];
+              const _wpus = [...new Set(s.rows.map(row => String(row.kgPerUnit||'')).filter(v => toNum(v) > 0))];
               const groupWpu = _wpus.length === 1 ? _wpus[0] : undefined;
               const kg = (()=>{
                 let t = 0, any = false;
@@ -3719,8 +4047,8 @@ function renderDaily(container){
               })();
               if(kg !== null){
                 const wpuMap = {'ตัน':1000,'ton':1000,'bigbag':1000};
-                let wpu = (groupWpu && parseFloat(groupWpu) > 0) ? parseFloat(groupWpu) : wpuMap[s.unit];
-                if(!wpu){ const item = db.find(r=>r.no===s.no); wpu = item&&item.col2?parseFloat(item.col2):null; }
+                let wpu = (groupWpu && toNum(groupWpu) > 0) ? toNum(groupWpu) : wpuMap[s.unit];
+                if(!wpu){ const item = db.find(r=>r.no===s.no); wpu = item&&item.col2?toNum(item.col2):null; }
                 return (wpu && _wpus.length <= 1)
                   ? `${s.total.toLocaleString()} ${escHtml(s.unit)} × ${wpu} = ${kg.toLocaleString()} กก.`
                   : `${s.total.toLocaleString()} ${escHtml(s.unit)} = ${kg.toLocaleString()} กก.`;
@@ -4090,7 +4418,7 @@ function calcVariance(){
       const kg = convertToKg(e.qty, e.unit, e.no, e.kgPerUnit);
       if(kg !== null) acc[e.no].kg = r2(acc[e.no].kg + kg);
       else acc[e.no].unknown = true;
-      acc[e.no].qty = r2(acc[e.no].qty + (parseFloat(e.qty)||0));
+      acc[e.no].qty = r6(acc[e.no].qty + (toNum(e.qty)||0));   // [Fix V10-12]
     });
     return acc;
   };
@@ -4238,7 +4566,7 @@ async function undoDelete(){
       body: JSON.stringify(payload),
       redirect: 'follow',
     });
-    const json = await res.json();
+    const json = await readJson(res);
     if(!json.ok) throw new Error(json.error || 'sync ไม่สำเร็จ');
     showToast('✅ คืนค่าเรียบร้อย (Sheet อัปเดตแล้ว)');
   } catch(e) {
@@ -4344,7 +4672,7 @@ async function deleteDailyEntry(date, entryIdx){
       body: JSON.stringify(payload),
       redirect: 'follow',
     });
-      const json = await res.json();
+      const json = await readJson(res);
       if(!json.ok) throw new Error(json.error || 'ลบไม่สำเร็จ');
     } else {
       // ถ้าไม่มี entry เหลือเลยในวันนั้น ส่ง action deleteDailyDate เพื่อลบทั้งวันออกจาก Sheet
@@ -4355,7 +4683,7 @@ async function deleteDailyEntry(date, entryIdx){
       body: JSON.stringify(payload),
       redirect: 'follow',
     });
-      const json = await res.json();
+      const json = await readJson(res);
       if(!json.ok) throw new Error(json.error || 'ลบไม่สำเร็จ');
     }
     _clearPending(day.date);
@@ -4459,7 +4787,7 @@ function _editEntryUnitChanged(unit, isInitial){
       + ' oninput="window._editEntryKgPerUnit=this.value;_updateEditEntryPreview()"></label>';
   } else if(unit === 'bigbag'){
     wrap.style.display = 'flex';
-    if(!window._editEntryKgPerUnit || parseFloat(window._editEntryKgPerUnit) <= 0) window._editEntryKgPerUnit = '1000';
+    if(!window._editEntryKgPerUnit || toNum(window._editEntryKgPerUnit) <= 0) window._editEntryKgPerUnit = '1000';
     extra.innerHTML = '<span style="font-size:12px;color:#7a8fa6">≈ 1,000 กก./ใบ (ค่ามาตรฐาน)</span>';
   } else {
     wrap.style.display = 'none';
@@ -4475,7 +4803,7 @@ function _updateEditEntryPreview(){
   const qtyEl = document.getElementById('edit_qty');
   const unitEl = document.getElementById('edit_unit');
   if(!qtyEl || !unitEl){ preview.innerHTML=''; return; }
-  const qty = parseFloat(qtyEl.value);
+  const qty = toNum(qtyEl.value);
   const unit = unitEl.value;
   if(!qty || !unit){ preview.innerHTML=''; return; }
   const kg = convertToKg(qty, unit, window._editEntryNo || '', window._editEntryKgPerUnit);
@@ -4553,7 +4881,7 @@ async function saveEditDailyEntry(date, realIdx){
   if(loaderMsg) loaderMsg.textContent = '⏳ กำลังบันทึกการแก้ไข...';
   if(loader) loader.style.display = 'flex';
 
-  const editQty = parseFloat(document.getElementById('edit_qty').value);
+  const editQty = toNum(document.getElementById('edit_qty').value);
   if(isNaN(editQty) || editQty <= 0){
     showToast('กรุณากรอกจำนวนที่มากกว่า 0', 'error');
     if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'บันทึก'; }
@@ -4570,13 +4898,13 @@ async function saveEditDailyEntry(date, realIdx){
     if(loader) loader.style.display = 'none';
     return;
   }
-  if(editUnit === 'กระสอบ' && (!window._editEntryKgPerUnit || parseFloat(window._editEntryKgPerUnit) <= 0)){
+  if(editUnit === 'กระสอบ' && (!window._editEntryKgPerUnit || toNum(window._editEntryKgPerUnit) <= 0)){
     showToast('กรุณากรอกน้ำหนักต่อกระสอบ (กก./กระสอบ)', 'error');
     if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'บันทึก'; }
     if(loader) loader.style.display = 'none';
     return;
   }
-  if(editUnit === 'bigbag' && (!window._editEntryKgPerUnit || parseFloat(window._editEntryKgPerUnit) <= 0)){
+  if(editUnit === 'bigbag' && (!window._editEntryKgPerUnit || toNum(window._editEntryKgPerUnit) <= 0)){
     window._editEntryKgPerUnit = '1000';
   }
 
@@ -4648,7 +4976,7 @@ async function saveEditDailyEntry(date, realIdx){
         body: JSON.stringify(payload),
         redirect: 'follow',
       });
-      const json = await res.json();
+      const json = await readJson(res);
       if(!json.ok) throw new Error(json.error || 'แก้ไขไม่สำเร็จ');
       _clearPending(day.date);
       showToast('✅ แก้ไขเรียบร้อย (sync Sheet แล้ว)');
@@ -4780,7 +5108,8 @@ function getStockByNo(no){
   _entriesForNo(no).forEach(e => {
     const key = e.unit + '|' + (e.kgPerUnit || '');
     if(!acc[key]) acc[key] = {unit: e.unit, kgPerUnit: e.kgPerUnit || '', qty: 0};
-    acc[key].qty = r2(acc[key].qty + (parseFloat(e.qty) || 0));
+    // [Fix V10-12] ใช้ r6 (6 ตำแหน่ง) ไม่ใช่ r2 — ห้ามปัด "จำนวน" ก่อนเอาไปคูณน้ำหนักต่อหน่วย
+    acc[key].qty = r6(acc[key].qty + (toNum(e.qty) || 0));
   });
   _stockCache[no] = acc;
   return acc;
@@ -4794,7 +5123,7 @@ function getStockByNoAndLoc(no){
     const loc = normLoc(e.location||'');
     const key = loc+'|'+e.unit+'|'+(e.kgPerUnit||'');
     if(!acc[key]) acc[key]={location:loc,storage:e.storage||'',qty:0,unit:e.unit,kgPerUnit:e.kgPerUnit||''};
-    acc[key].qty = r2(acc[key].qty+(parseFloat(e.qty)||0));
+    acc[key].qty = r6(acc[key].qty+(toNum(e.qty)||0));   // [Fix V10-12]
   });
   const result = Object.values(acc).filter(s=>s.qty>0);
   _stockLocCache[no] = result;
@@ -4891,14 +5220,18 @@ window.addEventListener('beforeunload', (e) => {
 });
 
 
-window._formatThDate = (dateStr) => {
+// [Fix V10-14] เปลี่ยนจาก arrow function ที่ผูกกับ window เป็น function declaration
+// เพราะ function declaration ถูก hoist ขึ้นก่อน ทำให้ _loadDailyData()/loadFromSheet()
+// ที่รันก่อนบรรทัดนี้เรียกใช้ได้ (ใช้เติม date_th ให้ชีตที่ไม่มีคอลัมน์นั้น)
+function _formatThDate(dateStr){
   if(!dateStr) return '- เลือกวันที่ -';
   const MN = 'ม.ค. ก.พ. มี.ค. เม.ย. พ.ค. มิ.ย. ก.ค. ส.ค. ก.ย. ต.ค. พ.ย. ธ.ค.'.split(' ');
   const p = String(dateStr).split('-');
   const day = parseInt(p[2]), month = parseInt(p[1]), year = parseInt(p[0]);
   if(!day || !month || !year || isNaN(day) || isNaN(month) || isNaN(year)) return String(dateStr);
   return day + ' ' + (MN[month-1]||'') + ' ' + (year+543);
-};
+}
+window._formatThDate = _formatThDate;
 
 // [Fix R-12] เดิมทุกครั้งที่เปิด date picker จะเพิ่ม document click listener ใหม่ (เพื่อปิดเมื่อคลิกนอก
 // popup) แต่ listener นั้นลบตัวเองออกเฉพาะตอน "คลิกนอก popup" เท่านั้น ถ้าปิดด้วยการเลือกวันที่
@@ -5856,17 +6189,17 @@ function showQuickAction(e, itemId){
       ${escHtml(r.no)} — ${escHtml(r.desc.slice(0,20))}${r.desc.length>20?'...':''}
     </div>
     <div class="qa-sep"></div>
-    <div class="qa-item" onclick="closeQuickAction();showDetail(${itemId})">
+    <div class="qa-item" onclick="closeQuickAction();showDetail(${itemId}, '${escJs(r.no)}')">
       👁 ดูรายละเอียด
     </div>
-    <div class="qa-item" onclick="closeQuickAction();showEditModal(${itemId})">
+    <div class="qa-item" onclick="closeQuickAction();showEditModal(${itemId}, '${escJs(r.no)}')">
       ✏️ แก้ไขข้อมูล
     </div>
     <div class="qa-item" onclick="closeQuickAction();showPage('stockedit');setTimeout(()=>{const el=document.getElementById('seSearchInput');if(el){el.value='${escJs(r.no)}';window._doSEFilter('${escJs(r.no)}');}},100)">
       📦 อัปเดตสต็อก
     </div>
     <div class="qa-sep"></div>
-    <div class="qa-item danger" onclick="closeQuickAction();deleteItem(${itemId})">
+    <div class="qa-item danger" onclick="closeQuickAction();deleteItem(${itemId}, '${escJs(r.no)}')">
       🗑 ลบรายการ
     </div>`;
 
@@ -5951,6 +6284,7 @@ let _bootedFromCache = false;
     const cached = _loadItemsCache();
     if(!cached || !cached.length) return;
     db = cached.map(r => Object.assign({}, r, {stocks: [], row: null}));
+    _dbGen++;   // [Fix V10-1]
     _bootedFromCache = true;
     updateCounts();
     const hc = document.getElementById('hdrCount');
