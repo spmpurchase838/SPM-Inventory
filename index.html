@@ -11,9 +11,27 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src https://script.google.com https://script.googleusercontent.com; object-src 'none'; base-uri 'self'; form-action 'none'">
 <meta http-equiv="X-Content-Type-Options" content="nosniff">
 <meta name="referrer" content="no-referrer">
+<!-- [Fix V14-1] บอกเบราว์เซอร์ให้ถามเซิร์ฟเวอร์ทุกครั้งว่าไฟล์นี้มีตัวใหม่หรือยัง
+     ลดปัญหา "อัปโหลดไฟล์ใหม่แล้วแต่ยังเห็นของเก่า" (แคชฝั่ง CDN ของ GitHub Pages ยังต้องรอ ~10 นาทีเอง) -->
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
 <!-- [Fix V7-8] เอา <meta http-equiv="X-Frame-Options"> ออก — เบราว์เซอร์ไม่รองรับผ่าน meta tag
      (ขึ้น error ใน console ทุกครั้งที่เปิดหน้า) ต้องตั้งเป็น HTTP response header ฝั่งเซิร์ฟเวอร์เท่านั้น -->
 <title>SPM Inventory</title>
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     V14 — 15 ส.ค. 2569
+
+       V14-1  เพิ่ม "ป้ายบอกเวอร์ชัน" บนแถบหัวและหน้า login (และใน Console)
+              เหตุผล: ผู้ใช้แจ้งว่ากดย้อนเดือนไม่ได้ทั้งที่ไฟล์บน GitHub แก้ไปแล้ว
+              ตรวจแล้วพบว่าโค้ดถูกต้อง — สาเหตุคือเบราว์เซอร์/CDN ยังเสิร์ฟไฟล์เก่าอยู่
+              (GitHub Pages เก็บแคช HTML ที่ CDN ~10 นาที + เบราว์เซอร์เก็บซ้ำอีกชั้น)
+              เดิมไม่มีทางรู้เลยว่ากำลังเปิดไฟล์เวอร์ชันไหน จึงแยกไม่ออกระหว่าง
+              "แก้ไม่หาย" กับ "ยังไม่ได้โหลดไฟล์ใหม่"
+              + เพิ่ม meta Cache-Control ให้เบราว์เซอร์ถามหาไฟล์ใหม่ทุกครั้ง
+
+     วิธีเช็คว่าโหลดไฟล์ใหม่แล้วหรือยัง: ดูป้ายเล็ก ๆ ข้าง ๆ คำว่า "SPM Inventory" บนแถบหัว
+     ถ้ายังไม่ขึ้น v14 ให้กด Ctrl+Shift+R (Windows) หรือ Cmd+Shift+R (Mac)
+     ═══════════════════════════════════════════════════════════════════════════ -->
 <!-- ═══════════════════════════════════════════════════════════════════════════
      V13 — แก้บัคที่ผู้ใช้แจ้ง 15 ส.ค. 2569 + ตรวจซ้ำด้วย "การคลิกจริง" ทุกปุ่ม 51 กรณี
 
@@ -774,6 +792,23 @@ tbody tr:hover {
   100% { background-position: -100% 0; }
 }
 
+/* [Fix V14-1] ป้ายบอกเวอร์ชันของไฟล์ที่เบราว์เซอร์กำลังเปิดอยู่จริง
+   จำเป็นเพราะ GitHub Pages เก็บแคชไฟล์ HTML ไว้ที่ CDN ประมาณ 10 นาที และเบราว์เซอร์ก็เก็บซ้ำอีกชั้น
+   ทำให้หลังอัปโหลดไฟล์ใหม่ ผู้ใช้ยังเห็นของเก่าอยู่ โดยไม่มีทางรู้เลยว่ากำลังเปิดเวอร์ชันไหน */
+#appVersion {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-family: 'IBM Plex Mono', monospace;
+  color: rgba(255,255,255,.45);
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 8px;
+  padding: 1px 6px;
+  margin-left: 6px;
+  cursor: help;
+  white-space: nowrap;
+}
+@media (max-width: 900px) { #appVersion { display: none !important; } }
+
 </style>
 </head>
 <body>
@@ -787,6 +822,8 @@ tbody tr:hover {
   <button id="menuToggle" onclick="toggleSidebar()" aria-label="เมนู">☰</button>
   <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
   <h1 style="flex-shrink:0">SPM Inventory</h1>
+  <!-- [Fix V14-1] เช็คได้ทันทีว่าเบราว์เซอร์เปิดไฟล์เวอร์ชันไหนอยู่ (กันปัญหาแคชไฟล์เก่าค้าง) -->
+  <span id="appVersion" title="เวอร์ชันของไฟล์ที่เปิดอยู่ตอนนี้ — ถ้าไม่ตรงกับไฟล์ที่เพิ่งอัปโหลด แปลว่าเบราว์เซอร์ยังใช้ไฟล์เก่าที่เก็บไว้ ให้กด Ctrl+Shift+R"></span>
 
   <!-- Global search -->
   <div id="globalSearchWrap" style="flex:1;max-width:320px;position:relative;margin:0 12px">
@@ -878,7 +915,9 @@ tbody tr:hover {
       <img id="loginLogo" alt="SPM" src="" style="width:90px;height:90px;object-fit:contain;border-radius:12px;background:white;padding:6px">
       <div style="text-align:center">
         <div style="color:white;font-weight:700;font-size:16px;letter-spacing:.3px">SPM Inventory</div>
-        <div style="color:rgba(255,255,255,.4);font-size:11px;margin-top:2px">SPM Inventory</div>
+        <!-- [Fix V14-1] เดิมบรรทัดนี้เขียนว่า "SPM Inventory" ซ้ำกับบรรทัดบนเป๊ะ ๆ (ไม่ได้บอกอะไรเพิ่ม)
+             เปลี่ยนเป็นเลขเวอร์ชัน จะได้เช็คได้ตั้งแต่หน้าแรกว่าเปิดไฟล์ตัวใหม่แล้วหรือยัง -->
+        <div id="loginVersion" style="color:rgba(255,255,255,.4);font-size:11px;margin-top:2px;font-family:'IBM Plex Mono',monospace"></div>
       </div>
     </div>
     <div style="border-top:1px solid rgba(255,255,255,.1);padding-top:24px">
@@ -915,6 +954,22 @@ tbody tr:hover {
 //   1. ย้าย token ไปไว้ใน Google Apps Script ฝั่ง server โดยตรง (ไม่ส่งกลับมาหน้าบ้าน)
 //   2. เพิ่ม doGet/doPost ใน Apps Script ให้ตรวจสอบ allowed origin หรือ IP whitelist
 //   3. ใช้ Google OAuth แทน static token
+// ═══════════════════════════════════════════════════════════════════════════
+// [Fix V14-1] เลขเวอร์ชันของไฟล์ — แสดงบนแถบหัวและหน้า login
+// เอาไว้ตรวจว่า "เบราว์เซอร์กำลังเปิดไฟล์ตัวไหนอยู่จริง"
+// GitHub Pages เก็บแคชไฟล์ HTML ไว้ที่ CDN ราว 10 นาที และเบราว์เซอร์เก็บซ้ำอีกชั้น
+// หลังอัปโหลดไฟล์ใหม่จึงมักยังเห็นของเก่าอยู่ — เดิมไม่มีทางรู้เลยว่าเห็นเวอร์ชันไหน
+// ถ้าเลขที่แสดงไม่ตรงกับไฟล์ที่เพิ่งอัปโหลด ให้กด Ctrl+Shift+R (หรือ Cmd+Shift+R บน Mac)
+const APP_VERSION = 'v14';
+const APP_BUILD   = '15 ส.ค. 2569';
+(function _paintVersion(){
+  const set = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
+  set('appVersion', APP_VERSION);
+  set('loginVersion', APP_VERSION + ' · ' + APP_BUILD);
+  console.log('%cSPM Inventory ' + APP_VERSION + ' (' + APP_BUILD + ')',
+              'background:#1a5276;color:#fff;padding:2px 8px;border-radius:4px;font-weight:600');
+})();
+
 function _d(h){return h.match(/../g).map(b=>String.fromCharCode(parseInt(b,16)^42)).join('');}
 
 // ═══════════════════════════════════════════════════════════════════════════
