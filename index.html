@@ -960,7 +960,7 @@ tbody tr:hover {
 // GitHub Pages เก็บแคชไฟล์ HTML ไว้ที่ CDN ราว 10 นาที และเบราว์เซอร์เก็บซ้ำอีกชั้น
 // หลังอัปโหลดไฟล์ใหม่จึงมักยังเห็นของเก่าอยู่ — เดิมไม่มีทางรู้เลยว่าเห็นเวอร์ชันไหน
 // ถ้าเลขที่แสดงไม่ตรงกับไฟล์ที่เพิ่งอัปโหลด ให้กด Ctrl+Shift+R (หรือ Cmd+Shift+R บน Mac)
-const APP_VERSION = 'v14';
+const APP_VERSION = 'v15';
 const APP_BUILD   = '15 ส.ค. 2569';
 (function _paintVersion(){
   const set = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
@@ -4552,10 +4552,11 @@ function showVariance(){
   const dates = MOCK_DAILY.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(d=>({date:d.date, date_th:d.date_th}));
   if(dates.length < 2){ showToast('ต้องมีข้อมูลอย่างน้อย 2 วัน','error'); return; }
 
+  // [Fix V15-1] เพิ่มตัวเลือก "โหมด" — ค่าเริ่มต้นคือเทียบยอดคงเหลือสะสม ซึ่งเป็นสิ่งที่คนส่วนใหญ่คาดหวัง
   document.getElementById('modalBox').innerHTML = `
-    <h2>📊 เปรียบเทียบยอดที่บันทึก 2 วัน</h2>
-    <div style="font-size:11.5px;color:#888;margin:-10px 0 14px">เทียบยอดที่ "บันทึกไว้" ในสองวันนั้น ไม่ใช่ยอดคงเหลือสะสม</div>
-    <div class="form-row" style="margin-bottom:16px">
+    <h2>📊 เปรียบเทียบสต็อก 2 วัน</h2>
+    <div id="var_modeHint" style="font-size:11.5px;color:#888;margin:-10px 0 14px"></div>
+    <div class="form-row" style="margin-bottom:10px">
       <div class="form-group">
         <label>วันที่ 1 (เดิม)</label>
         <select id="var_date1">
@@ -4569,6 +4570,17 @@ function showVariance(){
         </select>
       </div>
     </div>
+    <div class="form-group" style="margin-bottom:10px">
+      <label>เทียบอะไร</label>
+      <select id="var_mode" onchange="_varModeHint();calcVariance()">
+        <option value="balance" selected>ยอดคงเหลือสะสม ณ สิ้นวันนั้น (แนะนำ)</option>
+        <option value="daily">เฉพาะยอดที่บันทึกในวันนั้นวันเดียว</option>
+      </select>
+    </div>
+    <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink-2);margin-bottom:14px;cursor:pointer">
+      <input type="checkbox" id="var_hidesame" checked onchange="calcVariance()" style="width:15px;height:15px;accent-color:#1a5276">
+      ซ่อนรายการที่ส่วนต่างเป็น 0 (แสดงเฉพาะที่เปลี่ยนแปลง)
+    </label>
     <div id="varianceResult"></div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal()">ปิด</button>
@@ -4576,6 +4588,19 @@ function showVariance(){
       <button class="btn btn-primary" onclick="calcVariance()">เปรียบเทียบ</button>
     </div>`;
   document.getElementById('modalBg').classList.add('open');
+  _varModeHint();
+}
+
+// [Fix V15-1] คำอธิบายใต้หัวข้อ เปลี่ยนตามโหมดที่เลือก ให้ตีความตัวเลขไม่ผิด
+function _varModeHint(){
+  const el = document.getElementById('var_modeHint');
+  const sel = document.getElementById('var_mode');
+  if(!el) return;
+  el.innerHTML = (sel && sel.value === 'daily')
+    ? 'เทียบเฉพาะ<b>ยอดที่บันทึกในวันนั้นวันเดียว</b> — สินค้าที่ไม่ได้กรอกในวันนั้นจะนับเป็น 0 ' +
+      '(เหมาะกับคำถาม "วันไหนรับของเข้ามากกว่ากัน")'
+    : 'เทียบ<b>ยอดคงเหลือสะสม ณ สิ้นวันนั้น</b> — สินค้าที่ไม่ได้กรอกเพิ่มจะมีส่วนต่างเป็น 0 ' +
+      'เพราะของยังอยู่ในคลังเท่าเดิม (เหมาะกับคำถาม "สต็อกเปลี่ยนไปเท่าไหร่ระหว่างสองวันนี้")';
 }
 
 // [Fix V7-12] ลบ exportExcel() ออก — ถูกแทนที่ด้วย _exportCSV() แล้ว
@@ -4632,6 +4657,10 @@ function exportVariancePDF(){
           <div style="font-size:13px;font-weight:700;color:#1a5276">เปรียบเทียบสต็อกวัตถุดิบ</div>
           <div style="font-size:11px;color:#777;margin-top:4px">
             📅 ${escHtml(v.d1_th)} เทียบกับ ${escHtml(v.d2_th)}
+          </div>
+          <!-- [Fix V15-1] ระบุให้ชัดว่ารายงานนี้เทียบอะไร คนอ่านทีหลังจะได้ตีความตัวเลขไม่ผิด -->
+          <div style="font-size:10.5px;color:#888;margin-top:2px">
+            ${v.mode === 'daily' ? 'เทียบเฉพาะยอดที่บันทึกในวันนั้นวันเดียว' : 'เทียบยอดคงเหลือสะสม ณ สิ้นวันนั้น'}${v.hideSame && v.sameCount ? ' · ไม่รวม ' + v.sameCount + ' รายการที่ยอดเท่าเดิม' : ''}
           </div>
         </div>
         <div style="text-align:right;font-size:11px;color:#777">
@@ -4723,7 +4752,13 @@ function calcVariance(){
   const day2 = MOCK_DAILY.find(d=>d.date===date2);
   if(!day1||!day2) return;
 
-  // รวม กก. ต่อ no สำหรับแต่ละวัน
+  // [Fix V15-1] โหมดการเทียบ — ค่าเริ่มต้นคือ "ยอดคงเหลือสะสม"
+  const _modeEl = document.getElementById('var_mode');
+  const mode = _modeEl ? _modeEl.value : 'balance';
+  const _hideEl = document.getElementById('var_hidesame');
+  const hideSame = _hideEl ? _hideEl.checked : true;
+
+  // รวม กก. ต่อ no สำหรับแต่ละวัน (โหมด "เฉพาะที่บันทึกในวันนั้น")
   const sumDay = (day) => {
     const acc = {};
     day.entries.forEach(e=>{
@@ -4737,12 +4772,39 @@ function calcVariance(){
     return acc;
   };
 
-  const s1 = sumDay(day1);
-  const s2 = sumDay(day2);
-  const allNos = [...new Set([...Object.keys(s1), ...Object.keys(s2)])];
+  let s1, s2, allNos;
+  if(mode === 'daily'){
+    s1 = sumDay(day1);
+    s2 = sumDay(day2);
+    allNos = [...new Set([...Object.keys(s1), ...Object.keys(s2)])];
+  } else {
+    // ── โหมดยอดคงเหลือสะสม ──
+    // ไล่ทุกรหัสที่เคยมีประวัติ แล้วคิดยอดคงเหลือ ณ สิ้นวันที่ 1 และสิ้นวันที่ 2
+    // สินค้าที่ไม่ได้กรอกเพิ่มระหว่างสองวันนี้ ยอดจะเท่ากันทั้งคู่ -> ส่วนต่าง 0 ตามที่ควรเป็น
+    const byNo = _buildEntriesByNo();
+    s1 = {}; s2 = {}; allNos = [];
+    Object.keys(byNo).forEach(no => {
+      const a = _balanceAsOf(byNo[no], date1, no);
+      const b = _balanceAsOf(byNo[no], date2, no);
+      if(!a.any && !b.any) return;   // ยังไม่มีของทั้งสองวัน (ประวัติเริ่มหลังจากนั้น) ไม่ต้องแสดง
+      const item = db.find(x => x.no === no);
+      const src  = (byNo[no][byNo[no].length-1] || {}).e || {};
+      const desc = (item && item.desc) || src.desc || no;
+      const code = (item && item.code) || src.code || '';
+      s1[no] = {no, desc, code, kg: a.kg, unknown: !!a.unknown};
+      s2[no] = {no, desc, code, kg: b.kg, unknown: !!b.unknown};
+      allNos.push(no);
+    });
+    // เรียงให้รายการที่เปลี่ยนแปลงมากที่สุดขึ้นก่อน
+    allNos.sort((x, y) => Math.abs(s2[y].kg - s1[y].kg) - Math.abs(s2[x].kg - s1[x].kg));
+  }
+
+  // [Fix V15-1] นับรายการที่ไม่เปลี่ยนแปลง ไว้บอกผู้ใช้ว่ามีอยู่กี่รายการ (เผื่อซ่อนไว้)
+  const _sameNos = allNos.filter(no => r2(((s2[no]&&s2[no].kg)||0) - ((s1[no]&&s1[no].kg)||0)) === 0);
+  const _shownNos = hideSame ? allNos.filter(no => _sameNos.indexOf(no) < 0) : allNos;
 
   let _varUnknownCount = 0;
-  const rows = allNos.map(no=>{
+  const rows = _shownNos.map(no=>{
     const a = s1[no];
     const b = s2[no];
     if((a && a.unknown) || (b && b.unknown)) _varUnknownCount++;
@@ -4760,15 +4822,18 @@ function calcVariance(){
       '<td style="padding:6px 10px;text-align:right;font-size:12px;color:#555">'+kg1.toLocaleString()+' กก.</td>' +
       '<td style="padding:6px 10px;text-align:right;font-size:12px;color:#555">'+kg2.toLocaleString()+' กก.</td>' +
       '<td style="padding:6px 10px;text-align:right;font-size:12px;font-weight:700;color:'+color+'">'+
-        arrow+' '+(diff>=0?'+':'')+diff.toLocaleString()+' กก.' +
+        // [Fix V15-1] ส่วนต่าง 0 ไม่ต้องมีเครื่องหมาย + นำหน้า (เดิมขึ้น "– +0 กก." อ่านแล้วสะดุด)
+        arrow+' '+(diff>0?'+':'')+diff.toLocaleString()+' กก.' +
       '</td>' +
       '</tr>';
   }).join('');
 
   const d1_th = day1.date_th;
   const d2_th = day2.date_th;
+  const _colLabel = (mode === 'daily') ? 'ยอดที่บันทึกวันนั้น' : 'ยอดคงเหลือ ณ สิ้นวัน';
 
   document.getElementById('varianceResult').innerHTML = `
+    <div style="font-size:11px;color:var(--ink-3);margin-bottom:6px">${escHtml(_colLabel)}</div>
     <table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead><tr style="background:#1a5276;color:white">
         <th style="padding:6px 10px;text-align:left">สินค้า</th>
@@ -4776,17 +4841,21 @@ function calcVariance(){
         <th style="padding:6px 10px;text-align:right">${escHtml(d2_th)}</th>
         <th style="padding:6px 10px;text-align:right">ส่วนต่าง</th>
       </tr></thead>
-      <tbody>${rows}</tbody>
+      <tbody>${rows || '<tr><td colspan="4" style="padding:16px;text-align:center;color:#888;font-size:12px">ไม่มีรายการที่เปลี่ยนแปลงระหว่างสองวันนี้</td></tr>'}</tbody>
     </table>
     <div style="font-size:11px;color:#888;margin-top:8px">
       ▲ เพิ่มขึ้น &nbsp; ▼ ลดลง &nbsp; – ไม่เปลี่ยนแปลง
     </div>
+    ${_sameNos.length ? `<div style="font-size:11px;color:var(--ink-3);margin-top:4px">
+      ${hideSame ? 'ซ่อนไว้ ' : 'รวมอยู่ในตาราง '}<b>${_sameNos.length}</b> รายการที่ส่วนต่างเป็น 0 (ยอดเท่าเดิม)
+    </div>` : ''}
     ${_varUnknownCount ? `<div style="font-size:11px;color:#b9770e;margin-top:6px;background:#fef5e7;border:1px solid #f5cba7;border-radius:5px;padding:6px 10px">
       ⚠️ มี ${_varUnknownCount} รายการที่ยังไม่มีน้ำหนักต่อหน่วย ยอด กก. ของรายการนั้นจึงยังไม่ครบ
     </div>` : ''}`;
 
-  // เก็บข้อมูลไว้สำหรับ export
-  window._lastVariance = { date1, date2, d1_th, d2_th, allNos, s1, s2 };
+  // เก็บข้อมูลไว้สำหรับ export ([Fix V15-1] ส่ง mode + รายการที่แสดงจริงไปด้วย)
+  window._lastVariance = { date1, date2, d1_th, d2_th, allNos: _shownNos, s1, s2,
+                           mode, sameCount: _sameNos.length, hideSame };
   const exportBtn = document.getElementById('exportVarianceBtn');
   if(exportBtn) exportBtn.style.display = 'flex';
 }
@@ -5444,6 +5513,55 @@ function _entriesForNo(no){
     });
   });
   return out;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// [Fix V15-1] "ยอดคงเหลือสะสม ณ สิ้นวันที่กำหนด" — ใช้กับหน้าเปรียบเทียบ 2 วัน
+//
+// เดิมหน้าเปรียบเทียบคิดจาก "ยอดที่บันทึกในวันนั้นวันเดียว" ทำให้สินค้าที่ไม่ได้กรอกในวันที่ 2
+// ขึ้นเป็น 0 กก. แล้วส่วนต่างกลายเป็นติดลบเต็มจำนวน ทั้งที่ของยังอยู่ในคลังครบ
+// (ผู้ใช้แจ้ง: "ถ้าไม่ได้กรอกสินค้านั้น ส่วนต่างควรเป็น 0")
+//
+// ตัวนี้ไล่ประวัติทุกวัน "ตั้งแต่ต้นจนถึงวันที่กำหนด" และเคารพธง snap (↺ นับสต็อกใหม่)
+// เหมือน _entriesForNo ทุกประการ ต่างแค่ตัดที่วันที่กำหนด แทนที่จะเอาถึงปัจจุบัน
+
+// จัดกลุ่ม entry ตามรหัส No. เรียงตามวัน — สร้างครั้งเดียวแล้วใช้ซ้ำ
+// (ถ้าไล่สแกนทุกวันซ้ำทีละสินค้า 500+ รายการ x 2 วันที่ จะช้าโดยไม่จำเป็น)
+function _buildEntriesByNo(){
+  const byNo = {};
+  _daysSorted().forEach(day => {
+    if(!day || !Array.isArray(day.entries)) return;
+    day.entries.forEach(e => {
+      if(!e || !e.no) return;
+      (byNo[e.no] = byNo[e.no] || []).push({d: String(day.date), e});
+    });
+  });
+  return byNo;
+}
+
+// คืน {kg, unknown, any} ของรหัสนี้ ณ สิ้นวัน maxDate
+function _balanceAsOf(list, maxDate, no){
+  let picked = [];
+  for(const it of (list || [])){
+    if(it.d > String(maxDate)) break;   // list เรียงตามวันอยู่แล้ว
+    if(it.e.snap) picked = [];          // จุดนับสต็อกใหม่ = ตัดยอดเก่าทิ้ง
+    picked.push(it.e);
+  }
+  // รวมตามหน่วย + น้ำหนักต่อหน่วย เหมือน getStockByNo แล้วค่อยแปลงเป็น กก.
+  const acc = {};
+  picked.forEach(e => {
+    const key = (e.unit || '') + '|' + (e.kgPerUnit || '');
+    if(!acc[key]) acc[key] = {unit: e.unit, kgPerUnit: e.kgPerUnit || '', qty: 0};
+    acc[key].qty = r6(acc[key].qty + (toNum(e.qty) || 0));
+  });
+  let kg = 0, unknown = 0, any = false;
+  Object.values(acc).forEach(s => {
+    if(s.qty === 0) return;
+    any = true;
+    const k = convertToKg(s.qty, s.unit, no, s.kgPerUnit);
+    if(k !== null) kg = r2(kg + k); else unknown++;
+  });
+  return {kg, unknown, any};
 }
 
 function getStockByNo(no){
