@@ -19,6 +19,36 @@
      (ขึ้น error ใน console ทุกครั้งที่เปิดหน้า) ต้องตั้งเป็น HTTP response header ฝั่งเซิร์ฟเวอร์เท่านั้น -->
 <title>SPM Inventory</title>
 <!-- ═══════════════════════════════════════════════════════════════════════════
+     V16 — 17 ส.ค. 2569 (รอบตรวจด้วยการรันไฟล์จริงใน headless browser 11 ชุดทดสอบ)
+     ค้นหาคำว่า [Fix V16-x] ในไฟล์เพื่อดูรายละเอียดของแต่ละข้อ
+
+       V16-1  ชื่อสินค้าที่เป็น "ตัวเลขล้วน" ทำให้ช่องค้นหาพังทั้งสองที่
+              Google Sheets แปลงเซลล์ที่มีแต่ตัวเลขเป็นชนิด "ตัวเลข" อัตโนมัติ
+              ตั้งชื่อสินค้าว่า 3080 ในแอป -> ชีตเก็บเป็น number -> อ่านกลับมาได้ number
+              -> r.desc.toLowerCase is not a function -> หน้าอัปเดตสต็อกค้นหาไม่ขึ้นเลย
+              (เกิดได้โดยไม่ต้องแตะชีตเอง — พิมพ์ในฟอร์มเพิ่มสินค้าก็พอ)
+              พ่วง: Code ตัวเลข -> กดปุ่ม Group A/B/C พัง | location ตัวเลข -> โหลดไม่ขึ้น
+              แล้วขึ้นข้อความผิดว่า "เชื่อมต่อ Sheet ไม่ได้" ทั้งที่ชีตตอบปกติ (ไล่ผิดทางแน่นอน)
+              -> บังคับให้ทุกฟิลด์ข้อความจากชีตเป็นสตริงตั้งแต่ตอนอ่านเข้ามา (_s)
+
+       V16-2  Export PDF บนคอม: กล่อง modal ทับหน้าที่พิมพ์
+              @media print ซ่อน header/sidebar/ปุ่ม ครบแล้ว แต่ลืม .modal-bg
+              และ closeModal() ทำงาน "หลัง" window.print() -> พื้นทึบสีเข้มถูกพิมพ์ทับรายงาน
+
+       V16-3  Dashboard: การ์ดกลุ่มโชว์ "—" ทั้งที่ยอดติดลบ ทำให้ผลรวมการ์ดไม่เท่ากับ KPI
+              (ทดสอบจริง: Group B = -500 กก. -> การ์ดขึ้น "—" แต่ KPI นับ -500 เข้าไปแล้ว)
+              ขัดกับที่ V9-2 ตั้งใจแก้ และไปซ่อนค่าติดลบตรงจุดที่แถบเตือน V12-1 บอกให้ไปตรวจพอดี
+
+       V16-4  รูป/โหมดที่ค้างใน _seImgs และ _seMode หลังการ์ดถูกซ่อนด้วยการค้นหา
+              V8-6/Fix 2.6 ล้าง _seStocks ของการ์ดที่ไม่ได้แสดงแล้ว แต่ลืมอีก 2 ตัว
+              -> รูปเก่าโผล่กลับมาแนบกับการบันทึกครั้งถัดไป และโหมด ↺ นับสต็อกใหม่ค้างข้ามรอบ
+
+       V16-5  พิมพ์ No. แบบไม่เติมศูนย์ (1234) -> เตือนว่าซ้ำ แต่ไม่ auto-fill ชื่อสินค้า
+              เพราะ _checkDuplicateNo เติมศูนย์ก่อนเทียบ แต่ autoFillDesc ไม่เติม
+
+       V16-6  กด Escape ไม่ปิด modal (ปิดได้แค่ตัวดูรูป) และคลิกนอกกล่อง Export ไม่ปิด
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════════════════════════
      V14 — 15 ส.ค. 2569
 
        V14-1  เพิ่ม "ป้ายบอกเวอร์ชัน" บนแถบหัวและหน้า login (และใน Console)
@@ -605,7 +635,14 @@ tbody tr:hover {
   header, .sidebar, .topbar, .btn, .pagination, #toast, #menuToggle,
   #sessionWarnBanner, #pageLoader, #onboardingOverlay, #exportDialog, #dataWarnBanner,
   #sidebarOverlay, #splashScreen, #breadcrumb, .daily-btns-desktop,
-  .daily-btns-mobile, #dailyActionWrap { display: none !important; }
+  .daily-btns-mobile, #dailyActionWrap,
+  /* [Fix V16-2] exportVariancePDF() ถูกเรียกจากปุ่มใน modal "เปรียบเทียบสต็อก 2 วัน"
+     และ closeModal() ทำงานใน restore() ซึ่งเกิด "หลัง" window.print() เสร็จแล้ว
+     ตอนสั่งพิมพ์ modal จึงยังเปิดอยู่ และ .modal-bg ไม่เคยถูกซ่อนตอนพิมพ์เลย
+     body ตั้ง print-color-adjust:exact ไว้ด้วย -> พื้นทึบ rgba(5,15,30,.6) เต็มจอ
+     ถูกพิมพ์ทับรายงานทั้งหน้า (ยืนยันจากการทดสอบ: display=flex สูง 900px ตอน media=print)
+     ตัวดูรูปเต็มจอและเมนูคลิกขวาก็ค้างทับได้แบบเดียวกัน */
+  .modal-bg, #imgViewer, .qa-menu { display: none !important; }
   [hidden] { display: none !important; }
   .layout { height: auto; display: block; }
   .main { padding: 0; overflow: visible; }
@@ -960,8 +997,8 @@ tbody tr:hover {
 // GitHub Pages เก็บแคชไฟล์ HTML ไว้ที่ CDN ราว 10 นาที และเบราว์เซอร์เก็บซ้ำอีกชั้น
 // หลังอัปโหลดไฟล์ใหม่จึงมักยังเห็นของเก่าอยู่ — เดิมไม่มีทางรู้เลยว่าเห็นเวอร์ชันไหน
 // ถ้าเลขที่แสดงไม่ตรงกับไฟล์ที่เพิ่งอัปโหลด ให้กด Ctrl+Shift+R (หรือ Cmd+Shift+R บน Mac)
-const APP_VERSION = 'v15';
-const APP_BUILD   = '15 ส.ค. 2569';
+const APP_VERSION = 'v16';
+const APP_BUILD   = '17 ส.ค. 2569';
 (function _paintVersion(){
   const set = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
   set('appVersion', APP_VERSION);
@@ -1129,6 +1166,28 @@ function numAttr(v){
   const n = toNum(v);
   return isNaN(n) ? '' : String(n);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// [Fix V16-1] บั๊ก: ชื่อสินค้าที่เป็น "ตัวเลขล้วน" ทำให้ช่องค้นหาพังทั้งสองที่
+//
+// Google Sheets แปลงเซลล์ที่มีแต่ตัวเลขให้เป็นชนิด "ตัวเลข" อัตโนมัติ
+// พอ Apps Script อ่านกลับมาส่งให้หน้าเว็บ ค่าที่ได้จึงเป็น number ไม่ใช่ string
+// โค้ดที่เรียกเมธอดของ String ตรง ๆ (.toLowerCase / .startsWith / .trim) จะโยน TypeError ทันที
+//
+// เส้นทางที่เกิดได้จริงโดยไม่ต้องแตะชีตเลย:
+//   ตั้งชื่อสินค้าว่า "3080" ในฟอร์มเพิ่มสินค้า -> ชีตเก็บเป็นตัวเลข 3080
+//   -> เปิดแอปใหม่ -> พิมพ์ค้นหาในหน้า "อัปเดตสต็อก" -> r.desc.toLowerCase is not a function
+//   -> หน้าค้นหาไม่ขึ้นอะไรเลย (ทั้งช่องค้นหาบนแถบหัวและในหน้าอัปเดตสต็อก)
+//
+// กรณีที่ต้องมีคนไปแก้ชีตเองถึงจะเกิด แต่ผลกระทบหนักกว่า:
+//   • Code เป็นตัวเลข -> กดปุ่ม Group A/B/C ในหน้าอัปเดตสต็อกแล้วพัง (r.code.startsWith)
+//   • location เป็นตัวเลข (พิมพ์ 1 แทน "โรงงาน 1") -> normLoc โยน error กลางการโหลด
+//     -> ถูกจับที่ catch ของ loadFromSheet -> ขึ้นแถบเหลือง "เชื่อมต่อ Google Sheet ไม่ได้"
+//     ทั้งที่ชีตตอบกลับมาปกติ 100% -> ผู้ใช้จะไปไล่ที่เน็ต/Apps Script ทั้งที่ต้นเหตุคือ 1 เซลล์ในชีต
+//
+// ทางแก้: บังคับให้ทุกฟิลด์ที่เป็น "ข้อความ" กลายเป็นสตริงตั้งแต่ตอนอ่านเข้ามา (จุดเดียว)
+// แทนที่จะไล่ใส่ String() ทีละจุดที่ใช้งาน ซึ่งจะพลาดจุดใหม่ ๆ ได้ตลอด
+function _s(v){ return String(v == null ? '' : v); }
 
 function toNum(v){
   if(typeof v === 'number') return isFinite(v) ? v : NaN;
@@ -1548,22 +1607,24 @@ async function loadFromSheet(opts){
     const _prevById = {};
     db.forEach(r => { if(r && r.no) _prevById[r.id] = r.no; });
 
+    // [Fix V16-1] ทุกฟิลด์ข้อความต้องผ่าน _s() — ชีตส่ง number กลับมาได้ถ้าเซลล์นั้นมีแต่ตัวเลข
+    // (เช่นชื่อสินค้า "3080") แล้วทุกจุดที่เรียก .toLowerCase()/.startsWith() จะพังทันที
     db = json.data.map((r, i) => ({
       id:      i + 1,
       row:     r._row || i + 2,
-      code:    r['Code']        || '',
+      code:    _s(r['Code']),
       // [Fix 1.5] เดิม ''.padStart(6,'0') ได้ '000000' ซึ่ง truthy ตัว || '' จึงไม่เคยทำงาน
       // ทำให้ทุกแถวที่ No. ว่างในชีตได้รหัสเดียวกันหมดแล้วสต็อกปนกัน
-      no:      r['No.'] ? String(r['No.']).padStart(6,'0') : '',
-      desc:    r['Description'] || '',
-      pkg:     r['บรรจุ']        || '',
-      col2:    r['นน./หน่วย']    || '',
-      cond:    r['เงื่อนไขการซื้อขาย'] || '',
-      loc:     r['location']    || '',
-      storage: r['สถานที่จัดเก็บ'] || '',
-      image:   r['pic']         || '',
-      image2:  r['pic2']        || '',
-      notes:   r['หมายเหตุ']     || '',
+      no:      r['No.'] ? _s(r['No.']).padStart(6,'0') : '',
+      desc:    _s(r['Description']),
+      pkg:     _s(r['บรรจุ']),
+      col2:    _s(r['นน./หน่วย']),
+      cond:    _s(r['เงื่อนไขการซื้อขาย']),
+      loc:     _s(r['location']),
+      storage: _s(r['สถานที่จัดเก็บ']),
+      image:   _s(r['pic']),
+      image2:  _s(r['pic2']),
+      notes:   _s(r['หมายเหตุ']),
       stocks:  [],
     }));
 
@@ -1594,7 +1655,18 @@ async function loadFromSheet(opts){
           d.date = normDateStr(d.date) || d.date;
           // [Fix V10-14] ชีตบางชุดไม่มีคอลัมน์ date_th -> เดิมทุกหน้าจะโชว์คำว่า "undefined"
           if(!d.date_th) d.date_th = _formatThDate(d.date);
-          d.entries.forEach(e => { if(e) e.location = normLoc(e.location||''); });
+          // [Fix V16-1] normalize ฟิลด์ข้อความของทุกแถวให้เป็นสตริงด้วย (เหตุผลเดียวกับ db ด้านบน)
+          // ค้นหาในหน้าประวัติ (_filterDailySearch) เรียก .toLowerCase() บน no/desc ตรง ๆ
+          d.entries.forEach(e => {
+            if(!e) return;
+            e.location = normLoc(e.location);
+            e.no      = _s(e.no);
+            e.desc    = _s(e.desc);
+            e.code    = _s(e.code);
+            e.unit    = _s(e.unit);
+            e.storage = _s(e.storage);
+            e.note    = _s(e.note);
+          });
           // [Fix V10-2/V10-3] กู้ธง snap / นน.ต่อหน่วย / หมายเหตุ / รูป ที่ชีตไม่ได้ส่งกลับมา
           _metaRestored += _restoreDailyMeta(d, _localMeta);
           if(pending.indexOf(d.date) < 0) MOCK_DAILY.push(d);
@@ -2037,7 +2109,12 @@ function renderDashboard(){
         <span style="font-size:16px">⚖️</span>
         <div>
           <div style="font-size:10px;color:#888;margin-bottom:1px">สต็อกรวม</div>
-          <div style="font-size:13px;font-weight:700;color:${color}">${kg > 0 ? kg.toLocaleString()+' กก.' : '—'}${unk ? ' <span title="ยังมีบางรายการที่แปลงเป็น กก. ไม่ได้ ยอดนี้จึงยังไม่ครบ" style="color:#b9770e">+?</span>' : ''}</div>
+          <!-- [Fix V16-3] เดิมเช็ค kg > 0 ทำให้กลุ่มที่ยอดสุทธิ "ติดลบ" โชว์ "—" เหมือนกลุ่มที่ไม่มีข้อมูล
+               ผลรวมของการ์ดทุกใบจึงไม่เท่ากับ KPI "สต็อกรวม" ด้านบน (ซึ่งนับค่าติดลบเข้าไปแล้ว)
+               ขัดกับที่ [Fix V9-2] ตั้งใจแก้ไว้ และไปซ่อนค่าติดลบตรงจุดที่แถบเตือน [Fix V12-1]
+               เพิ่งบอกให้ผู้ใช้ไปตรวจพอดี (ทดสอบจริง: Group B = -500 กก. -> การ์ดขึ้น "—" แต่ KPI = 5.5K)
+               ตอนนี้แสดงค่าติดลบเป็นสีแดง เหลือ "—" ไว้เฉพาะกรณีที่ไม่มีของจริง ๆ (0 พอดี) -->
+          <div style="font-size:13px;font-weight:700;color:${kg < 0 ? '#b52a2a' : color}">${kg !== 0 ? kg.toLocaleString()+' กก.' : '—'}${kg < 0 ? ' <span title="ยอดรวมของกลุ่มนี้ติดลบ — ของจริงติดลบไม่ได้ ดูรายละเอียดที่แถบเตือนด้านบน">⚠️</span>' : ''}${unk ? ' <span title="ยังมีบางรายการที่แปลงเป็น กก. ไม่ได้ ยอดนี้จึงยังไม่ครบ" style="color:#b9770e">+?</span>' : ''}</div>
           ${unk ? `<div style="font-size:9.5px;color:#b9770e;margin-top:2px;line-height:1.35">⚠️ ยังไม่รวม ${unk} รายการที่แปลงเป็น กก. ไม่ได้<br>(หน่วยถัง/เบาท์ หรือยังไม่ได้กรอก นน./หน่วย)</div>` : ''}
         </div>
       </div>
@@ -2078,9 +2155,11 @@ function renderDashboard(){
         <div style="font-size:10px;opacity:.6;margin-top:2px;text-transform:uppercase;letter-spacing:.5px">รายการทั้งหมด</div>
       </div>
       <div class="kpi-hover" style="background:#1a5276;color:white;border-radius:10px;padding:14px;text-align:center;position:relative">
-        <div style="font-size:22px;font-weight:800">${grandTotalKg > 0 ? (grandTotalKg >= 1000 ? (grandTotalKg/1000).toFixed(1)+'K' : grandTotalKg.toLocaleString()) : '—'}${grandUnknown ? '<span style="font-size:14px;opacity:.75">+?</span>' : ''}</div>
+        <!-- [Fix V16-3] เดิมเช็ค grandTotalKg > 0 เหมือนการ์ดกลุ่ม ยอดรวมติดลบจึงโชว์ "—"
+             และการย่อเป็น "K" ต้องใช้ค่าสัมบูรณ์ ไม่งั้น -1,500 จะไม่ถูกย่อ -->
+        <div style="font-size:22px;font-weight:800">${grandTotalKg !== 0 ? (Math.abs(grandTotalKg) >= 1000 ? (grandTotalKg/1000).toFixed(1)+'K' : grandTotalKg.toLocaleString()) : '—'}${grandUnknown ? '<span style="font-size:14px;opacity:.75">+?</span>' : ''}</div>
         <div style="font-size:10px;opacity:.6;margin-top:2px;text-transform:uppercase;letter-spacing:.5px">สต็อกรวม (กก.)</div>
-        ${grandTotalKg === 0 ? '<div style="font-size:9px;opacity:.4;margin-top:3px">รอข้อมูล</div>' : ''}
+        ${grandTotalKg === 0 && !grandUnknown ? '<div style="font-size:9px;opacity:.4;margin-top:3px">รอข้อมูล</div>' : ''}
         ${grandUnknown ? '<div title="หน่วยถัง/เบาท์ ไม่มีน้ำหนักต่อหน่วยคงที่ จึงแปลงเป็น กก. ไม่ได้" style="font-size:9px;color:#ffd9a8;margin-top:3px;line-height:1.3">⚠️ ยังไม่รวม ' + grandUnknown + ' รายการที่แปลงหน่วยไม่ได้</div>' : ''}
       </div>
       <div class="kpi-hover" style="background:#0d6e4b;color:white;border-radius:10px;padding:14px;text-align:center;cursor:pointer" onclick="showPage('stockview')">
@@ -2432,7 +2511,11 @@ function updateNoOptions(code){
 
 function autoFillDesc(no){
   if(!no) return;
-  const item = db.find(d => d.no === no);
+  // [Fix V16-5] ต้องเติมศูนย์ให้ครบ 6 หลักก่อนเทียบ แบบเดียวกับ _checkDuplicateNo และ saveNew
+  // เดิมเทียบค่าดิบ พิมพ์ "1234" จึงไม่แมตช์กับ "001234" ใน db
+  // ผลคือขึ้นเตือน "No. 1234 มีอยู่แล้วในระบบ (Corn Meal)" แต่ช่องชื่อสินค้ายังว่าง
+  // ผู้ใช้งงว่าตกลงมีหรือไม่มี แล้วพอกดบันทึกก็โดนบล็อกซ้ำอีกรอบ
+  const item = db.find(d => d.no === String(no).padStart(6, '0'));
   if(!item) return;   // รหัสใหม่ = ปล่อยให้ผู้ใช้กรอกชื่อเอง ไม่ทับของที่พิมพ์ไว้
   document.getElementById('f_desc').value = item.desc || '';
   // auto fill pkg, col2, cond ด้วย
@@ -2959,7 +3042,21 @@ function closeImgViewer(){
   const v = document.getElementById('imgViewer');
   if(v){ v.classList.remove('open'); document.getElementById('imgViewerPic').src = ''; }
 }
-document.addEventListener('keydown', e => { if(e.key === 'Escape') closeImgViewer(); });
+// [Fix V16-6] เดิม Escape ผูกไว้กับตัวดูรูปอย่างเดียว กด Escape ตอนเปิดฟอร์มแก้ไขไม่มีอะไรเกิดขึ้น
+// ทั้งที่คลิกพื้นหลังปิดได้ — ไม่สม่ำเสมอ และ #exportDialog ปิดได้ทางเดียวคือกดปุ่ม ✕
+// ปิดทีละชั้นจากบนลงล่าง: ตัวดูรูป -> กล่อง Export -> modal หลัก -> ปฏิทิน -> เมนูคลิกขวา
+document.addEventListener('keydown', e => {
+  if(e.key !== 'Escape') return;
+  const viewer = document.getElementById('imgViewer');
+  if(viewer && viewer.classList.contains('open')){ closeImgViewer(); return; }
+  const ex = document.getElementById('exportDialog');
+  if(ex && ex.style.display !== 'none' && ex.style.display !== ''){ ex.style.display = 'none'; return; }
+  const mb = document.getElementById('modalBg');
+  if(mb && mb.classList.contains('open')){ closeModal(); return; }
+  const dp = document.getElementById('datePickerPopup');
+  if(dp && dp.style.display === 'block' && window._closeDatePickerPopup){ window._closeDatePickerPopup(); return; }
+  closeQuickAction();
+});
 
 // ===== กล่องยืนยันของแอปเอง แทน confirm() ของเบราว์เซอร์ =====
 // (confirm() ดั้งเดิมมักถูกบล็อก/ไม่แสดงผลเมื่อเปิดผ่าน webview ในแอป เช่น LINE, Facebook)
@@ -3086,6 +3183,17 @@ function clearImg(target=''){
 document.getElementById('modalBg').addEventListener('click', e=>{
   if(e.target===document.getElementById('modalBg')) closeModal();
 });
+
+// [Fix V16-6] กล่อง Export ก็ควรปิดได้ด้วยการคลิกพื้นหลัง เหมือน modal อื่นทั้งไฟล์
+// (#exportDialog ถูกวางไว้ท้ายไฟล์ หลัง <script> จึงต้องรอให้ DOM พร้อมก่อนผูก event)
+(function _bindExportDialogBackdrop(){
+  const bind = () => {
+    const ex = document.getElementById('exportDialog');
+    if(ex) ex.addEventListener('click', e => { if(e.target === ex) ex.style.display = 'none'; });
+  };
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind);
+  else bind();
+})();
 
 
 
@@ -3300,11 +3408,14 @@ function renderStockEdit(container){
   };
 
   const renderFiltered = (group, q) => {
+    // [Fix V16-1] ผ่าน _s() ทุกตัว — กันแคชเก่าในเครื่องที่บันทึกไว้ก่อนเวอร์ชันนี้
+    // (loadFromSheet normalize ให้แล้ว แต่ localStorage อาจยังมีของเดิมค้างอยู่)
+    const _q = _s(q).toLowerCase();
     let filtered = db.filter(r =>
-      (group === 'all' || r.code.startsWith(group)) &&
-      (!q || r.desc.toLowerCase().includes(q.toLowerCase())
-          || r.no.toLowerCase().includes(q.toLowerCase())
-          || r.code.toLowerCase().includes(q.toLowerCase()))
+      (group === 'all' || _s(r.code).startsWith(group)) &&
+      (!_q || _s(r.desc).toLowerCase().includes(_q)
+           || _s(r.no).toLowerCase().includes(_q)
+           || _s(r.code).toLowerCase().includes(_q))
     );
     filtered = [...filtered].sort((a,b) => {
       const ai = window._seRecentIds.indexOf(a.id);
@@ -3320,9 +3431,17 @@ function renderStockEdit(container){
     const shown = filtered.slice(0, MAX_SHOW);
     // [Fix 2.6] ล้าง state ของการ์ดที่ไม่ได้แสดงอยู่ ไม่งั้นค่าที่ผู้ใช้กรอกค้างไว้ก่อนพิมพ์ค้นหาใหม่
     // จะถูกส่งขึ้นชีตพร้อมกันตอนกดบันทึก โดยที่ผู้ใช้มองไม่เห็นบนหน้าจอ
+    // [Fix V16-4] เดิมล้างแต่ _seStocks ลืม _seImgs กับ _seMode
+    //   • รูป: แนบรูปให้สินค้า A (ยังไม่กรอกจำนวน) -> พิมพ์ค้นหาสินค้าอื่น -> กลับมาค้นหา A
+    //     รูปเดิมยังอยู่ แล้วถูกแนบไปกับการบันทึกครั้งถัดไป (อาการเดียวกับ [FIX-A10] ที่แก้ไปครึ่งเดียว)
+    //   • โหมด: ตั้ง "↺ แทนที่ยอดเดิม" ไว้แล้วเปลี่ยนคำค้นหา พอการ์ดกลับมาก็ยังเป็นโหมดแทนที่อยู่
+    //     ซึ่งล้างยอดสะสมทั้งหมดของสินค้านั้น — เสี่ยงเผลอกดบันทึกโดยไม่ได้ตั้งใจ
     const shownIds = new Set(shown.map(r => r.id));
     Object.keys(window._seStocks || {}).forEach(k => {
-      if(!shownIds.has(Number(k))) window._seStocks[k] = [{location:'', loc:'', qty:'', unit:''}];
+      if(shownIds.has(Number(k))) return;
+      window._seStocks[k] = [{location:'', loc:'', qty:'', unit:''}];
+      if(window._seImgs) delete window._seImgs[k];
+      if(window._seMode) delete window._seMode[k];
     });
     window._seShown = shown.map(r => r.id);
     let html = shown.map(r => renderItem(r)).join('');
@@ -4003,10 +4122,12 @@ function renderStockView(container){
 
   // renderCardsFiltered: กรองตาม code และคำค้นหา
   const renderCardsFiltered = (code, q) => {
+    // [Fix V16-1] (r.desc||'') ไม่ช่วยถ้าค่าเป็นตัวเลข 3080 (truthy แต่ไม่มี .toLowerCase)
+    const _q = _s(q).toLowerCase();
     const filtered = withStock.filter(r =>
-      (r.code || '') === code &&
-      (!q || (r.desc||'').toLowerCase().includes(q.toLowerCase())
-          || (r.no||'').toLowerCase().includes(q.toLowerCase()))
+      _s(r.code) === code &&
+      (!_q || _s(r.desc).toLowerCase().includes(_q)
+           || _s(r.no).toLowerCase().includes(_q))
     );
     if(!filtered.length) return emptyState('🔍','ไม่พบข้อมูลสต็อก','ลองค้นหาด้วยคำอื่น หรือเลือก Group ใหม่');
 
@@ -5453,9 +5574,11 @@ function normDateStr(val){
 }
 
 function normLoc(loc){
-  if(!loc) return '';
+  if(loc == null || loc === '') return '';
+  // [Fix V16-1] ต้องผ่าน _s() ก่อน — ถ้าชีตส่ง location มาเป็นตัวเลข (มีคนพิมพ์ 1 แทน "โรงงาน 1")
+  // loc.trim() จะโยน TypeError กลางการโหลด แล้วแอปขึ้นข้อความผิดว่า "เชื่อมต่อ Sheet ไม่ได้"
   // ลบ space ส่วนเกิน และ normalize ชื่อโรงงาน
-  let s = loc.trim().replace(/\s+/g, ' ');
+  let s = _s(loc).trim().replace(/\s+/g, ' ');
   // โรง1, โรงงาน1, โรงงาน 1 → รวมเป็น โรงงาน 1 แบบเดียวกันเสมอ
   s = s.replace(/^โรง(?:งาน)?\s*(\d+)$/i, 'โรงงาน $1');
   return s;
@@ -5883,7 +6006,8 @@ window._filterDailySearch = _debounce((q) => {
   const results = [];
   MOCK_DAILY.forEach(day => {
     day.entries.forEach(e => {
-      if((e.no||'').toLowerCase().includes(q) || (e.desc||'').toLowerCase().includes(q)){
+      // [Fix V16-1] ผ่าน _s() กันแถวประวัติที่ชีตส่ง no/desc มาเป็นตัวเลข
+      if(_s(e.no).toLowerCase().includes(q) || _s(e.desc).toLowerCase().includes(q)){
         results.push({...e, date: day.date, date_th: day.date_th});
       }
     });
@@ -6061,7 +6185,8 @@ function globalSearch(q){
   if(!q){ wrap.style.display='none'; return; }
 
   // [BugFix #3] ใช้ r.desc ตรง ๆ ไม่ผ่าน escHtml() กัน & → &amp; ทำให้หาไม่เจอ
-  const all = db.filter(r => r.no.toLowerCase().includes(q) || r.desc.toLowerCase().includes(q));
+  // [Fix V16-1] ผ่าน _s() กันค่าที่เป็นตัวเลขจากชีต/แคชเก่า
+  const all = db.filter(r => _s(r.no).toLowerCase().includes(q) || _s(r.desc).toLowerCase().includes(q));
   const matches = all.slice(0, 8);
 
   if(!matches.length){
