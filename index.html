@@ -18,6 +18,79 @@
 <!-- [Fix V7-8] เอา <meta http-equiv="X-Frame-Options"> ออก — เบราว์เซอร์ไม่รองรับผ่าน meta tag
      (ขึ้น error ใน console ทุกครั้งที่เปิดหน้า) ต้องตั้งเป็น HTTP response header ฝั่งเซิร์ฟเวอร์เท่านั้น -->
 <title>SPM Inventory</title>
+<!-- ════════════════════════════════════════════════════════════════════════════
+     V17 — 18 ส.ค. 2569 (รอบตรวจด้วยการอ่านโค้ดทั้งไฟล์ + รันจริงใน headless browser
+                              พร้อมข้อมูล mock ที่มีเคสมุม — ทุกข้อยืนยันจากอาการจริง)
+     ค้นหาคำว่า [Fix V17-x] ในไฟล์เพื่อดูรายละเอียดของแต่ละข้อ
+
+     ── ระดับวิกฏิ (ข้อมูลเสียหาย ไม่ใช่แค่ UI เพี้ยน) ──
+
+       V17-1  สต็อกหายทั้งรายการแบบเงียบ — ประวัติรายวันไม่ได้เติมศูนย์ No.
+              Google Sheets แปลงเซลล์ตัวเลขล้วนเป็นชนิด number เอง (เหตุเดียวกัน V16-1)
+              '001234' ที่ส่งขี้นไป -> ชีตเก็บ 1234 -> อ่านกลับมาได้ '1234'
+              ขนะที่ db เติมศูนย์เป็น '001234' -> _entriesForNo() เทียบตรงตัว จับคู่ไม่ติด
+              -> หน้ารายการขึ้น '-' / Dashboard ไม่นับ / หน้าสรุปสต็อกว่าง
+              ไม่มี error ไม่มีคำเตือน ข้อมูลบนชีตครบทุกแถว แต่แอปมองไม่เห็น
+              -> รวม normalize เป็นฟังก์ชันเดียว _normEntry() ใช้ทั้ง loadFromSheet
+                 และ _mergeServerDay (เดิม merge normalize แค่ location ตัวเดียว)
+              ⚠️ ควรตั้ง format คอลัมน์ No. ในชีตทั้งสองแท็บเป็น Plain text ด้วย
+
+       V17-2  แก้ไขสินค้าตอนแอปยังโหลดไม่เสร็จ = ลบรูปสินค้าบนชีตถาวร
+              _saveItemsCache ตัด image/image2 ออกเสมอ (base64 ก้อนใหน่)
+              เปิดจากแคช -> ชีตยังโหลดไม่เสร็จ -> ฟอร์มวาด value="" -> กดบันทึก
+              -> POST ส่ง pic:'' ทับลงชีต รูปหายถาวรโดยที่ไม่ได้แตะช่องรูปเลย
+              -> เพิ่มธง f_imgCleared แยกให้ออกระหว่าง "ผู้ใช้กดลบรูปเอง"
+                 กับ "ช่องว่างเพราะแคชตัดรูปทิ้ง" (การลบรูปเองยังทำงานปกติ)
+
+       V17-3  หน้าอัปเดตสต็อก: จำนวนที่กรอกค้างไว้หายเมื่อพิมพ์ค้นหาต่ออีกคำ
+              [Fix 2.6] ล้าง _seStocks/_seImgs/_seMode ของการ์ดที่ไม่ได้แสดง
+              ด้วยเหตุผลที่ไม่จริงแล้ว (saveStockItem อ่านเฉพาะ _seStocks[itemId] ตัวเดียว)
+              เคสที่มองไม่ออกเลย: การ์ดตัดที่ 40 รายการ และการบันทึกดันสินค้าขึ้นลำดับ 1
+              -> ค่าที่กรอกไว้ที่ลำดับ 40 หลุดนอก top-40 แล้วหาย ทั้งที่ไม่ได้แตะช่องค้นหา
+              พ่วง: _hasUnsavedSEInput() คืน false -> กด 🔄 ก็ไม่เตือนอีกต่อไป
+
+       V17-4  getDaily ตอบ ok:false -> จอขึ้น "โหลดสำเร็จ" แต่สต็อกเป็นศูนย์ทั้งระบบ
+              บล็อก if(jsonD.ok){...} ไม่มี else เลย (ทดสอบจริง: แถบหัวเขียวปกติ
+              + toast "✅ โหลดข้อมูลล่าสุดแล้ว" แต่ MOCK_DAILY ว่างเปล่า) -> เพิ่มแถบเตือนค้าง
+
+       V17-5  กดปุ่ม "ลบ" ซ้ำตอนเน็ตช้า -> เลขแถวในชีตเพี้ยน -> แก้ไขครั้งถัดไปทับสินค้าผิดตัว
+              deleteItem ไม่มีธงกันกดซ้ำและไม่ disable ปุ่มเลย (ต่างจาก saveNew/saveEdit)
+              -> _applyLocalDelete() ทำงานสองรอบ -> x.row-- รันซ้ำ -> _row ผิดทั้งชุด
+              -> Apps Script เขียนทับแถวของสินค้าตัวอื่นทั้งแถว (คลาสเดียวกับที่ V10-1 แก้ไว้)
+
+     ── ตัวเลขไม่ตรงกัน / รายงาน ──
+
+       V17-6  คอลัมน์ "รวม (กก.)" หน้ารายการวัตถุดิบซ่อนยอดติดลบ
+              เดิมเช็ค totalKg>0 ขณะที่ Dashboard ([Fix V16-3]) ใช้ kg !== 0
+              ทดสอบจริง: ยอด -20 กระสอบ -> คอลัมน์จำนวนขึ้น -20 กระสอบ
+              แต่คอลัมน์รวมขึ้น '-' ขณะที่ Dashboard กับหน้าสรุปขึ้น -1,000 กก.
+
+       V17-9  saveEdit ไม่บังคับกรอก No. -> สินค้าได้รหัส '000000' แล้วไปทับแถวอื่น
+              (saveNew เช็ค if(!d.no) อยู่แล้ว แต่ saveEdit ไม่เช็คเลย)
+
+       V17-15 หัวตารางในไฟล์ PDF ที่ Export ออกมา มองไม่เห็น
+              <th> ของรายงานไม่ได้ตั้ง color กฎ global thead th (rgba(255,255,255,.7)) จึงชนะ
+              บนพื้น #d6eaf8 -> contrast ≈ 1.1:1 (เกณฑ์ขั้นต่ำคือ 4.5:1) อ่านไม่ออกเลย
+              เกิดทุกครั้งทั้งบนคอมและมือถือ (มี print-color-adjust:exact พื้นฟ้าจึงติดกระดาษด้วย)
+
+       V17-16 หัวกระดาษว่างเปล่า + เส้นขีดน้ำเงิน ติดหัวรายงานทุกใบ
+              @media print บังคับ display:block !important ทั้งที่ _exportPrintView
+              เคลียร์ข้อความทิ้ง -> ตอนนี้โชว์เฉพาะเมื่อมีข้อความจริง (class .on)
+
+       V17-20 หน้าสรุปสต็อกเปิดมาขึ้น "ไม่พบข้อมูลสต็อก" ทั้งที่มีของ
+              availCodes[0] || 'all' -> สินค้าตัวแรกที่ Code ว่าง ('') เป็น falsy ตกเป็น 'all'
+
+     ── ยังไม่ได้แก้ในรอบนี้ (ดูรายละเอียดในรายงานตรวจบัค) ──
+       • หน่วยว่าง/หน่วยที่ไม่รู้จักถูกคิดเป็น "กระสอบ" เงียบ — convertToKg catch-all fallback
+       • res.text() ไม่มี timeout คุม -> จอโหลดค้างถาวร (fetchTO clearTimeout อยู่ใน finally)
+       • undoDelete ไม่เช็ค _mg.replaced / ไม่คืนแถวเมื่อมีแถวซ้ำแต่ขึ้น "✅ คืนค่าเรียบร้อย"
+       • _mergeServerDay คืน ok:true เมื่อชีตไม่มีวันนั้น -> วันที่เพื่อนลบถูกชุบชีวิตกลับ
+       • normDateStr ผูกกับ timezone ของเครื่อง -> เครื่องที่ตั้ง UTC เห็นประวัติเลื่อน 1 วัน
+         (ทางแก้ที่ตรงจุดอยู่ที่ Apps Script: ส่ง date เป็นสตริง 'YYYY-MM-DD' ล้วน)
+       • race condition ข้ามเครื่อง (saveDaily = เขียนทับทั้งวัน) — ต้องแก้ที่ Apps Script
+       • authentication — ต้องเช็ค Session.getActiveUser().getEmail() ที่ Apps Script
+     ════════════════════════════════════════════════════════════════════════════
+-->
 <!-- ═══════════════════════════════════════════════════════════════════════════
      V16 — 17 ส.ค. 2569 (รอบตรวจด้วยการรันไฟล์จริงใน headless browser 11 ชุดทดสอบ)
      ค้นหาคำว่า [Fix V16-x] ในไฟล์เพื่อดูรายละเอียดของแต่ละข้อ
@@ -646,7 +719,10 @@ tbody tr:hover {
   [hidden] { display: none !important; }
   .layout { height: auto; display: block; }
   .main { padding: 0; overflow: visible; }
-  #printHeader { display: block !important; }
+  /* [Fix V17-16] เดิมบังคับโชว์ทุกกรณี แต่ _exportPrintView เคลียร์ข้อความทิ้ง
+     (ไฟล์รายงานมีหัวของตัวเองอยู่แล้ว) ผลคือทุกใบได้เส้นขีดน้ำเงิน + ช่องว่าง ~26px
+     ลอยอยู่เหนือหัวรายงานจริง — โชว์เฉพาะตอนที่มีข้อความจริงเท่านั้น */
+  #printHeader.on { display: block !important; }
   table { page-break-inside: auto; border-collapse: collapse; }
   tr { page-break-inside: avoid; page-break-after: auto; }
   thead { display: table-header-group; }
@@ -997,8 +1073,8 @@ tbody tr:hover {
 // GitHub Pages เก็บแคชไฟล์ HTML ไว้ที่ CDN ราว 10 นาที และเบราว์เซอร์เก็บซ้ำอีกชั้น
 // หลังอัปโหลดไฟล์ใหม่จึงมักยังเห็นของเก่าอยู่ — เดิมไม่มีทางรู้เลยว่าเห็นเวอร์ชันไหน
 // ถ้าเลขที่แสดงไม่ตรงกับไฟล์ที่เพิ่งอัปโหลด ให้กด Ctrl+Shift+R (หรือ Cmd+Shift+R บน Mac)
-const APP_VERSION = 'v16';
-const APP_BUILD   = '17 ส.ค. 2569';
+const APP_VERSION = 'v17';
+const APP_BUILD   = '18 ส.ค. 2569';
 (function _paintVersion(){
   const set = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
   set('appVersion', APP_VERSION);
@@ -1189,6 +1265,25 @@ function numAttr(v){
 // แทนที่จะไล่ใส่ String() ทีละจุดที่ใช้งาน ซึ่งจะพลาดจุดใหม่ ๆ ได้ตลอด
 function _s(v){ return String(v == null ? '' : v); }
 
+// [Fix V17-1] normalize แถวประวัติรายวันที่มาจากชีต — "จุดเดียว" ที่ใช้ร่วมกันทั้ง
+// loadFromSheet และ _mergeServerDay (เดิมสองที่ทำไม่เหมือนกัน merge ทำแค่ location)
+//   • ทุกฟิลด์ข้อความต้องเป็นสตริง (เหตุผลเดียวกับ [Fix V16-1])
+//   • no ต้องเติมศูนย์ให้ตรงกับ db — Google Sheets แปลงเซลล์ตัวเลขล้วนเป็นชนิด number
+//     '001234' ที่แอปเขียนขึ้นไปจึงกลายเป็น 1234 (ศูนย์นำหน้าหาย) พออ่านกลับมา
+//     _entriesForNo() เทียบแบบตรงตัวเป๊ะ ๆ จึงจับคู่ไม่ติด = สต็อกหายทั้งรายการแบบเงียบ ๆ
+//     (ไม่มี error ไม่มีคำเตือน ข้อมูลบนชีตยังครบ แต่แอปมองไม่เห็น)
+function _normEntry(e){
+  if(!e) return e;
+  e.location = normLoc(e.location);
+  e.no       = _s(e.no); if(e.no) e.no = e.no.padStart(6,'0');
+  e.desc     = _s(e.desc);
+  e.code     = _s(e.code);
+  e.unit     = _s(e.unit);
+  e.storage  = _s(e.storage);
+  e.note     = _s(e.note);
+  return e;
+}
+
 function toNum(v){
   if(typeof v === 'number') return isFinite(v) ? v : NaN;
   if(v == null) return NaN;
@@ -1247,6 +1342,9 @@ let _connWarning  = '';   // สถานะเชื่อมต่อ Google S
 // [Fix V11-8] คำเตือนเรื่อง "ชีตไม่เก็บบางคอลัมน์ของประวัติรายวัน" ตรวจได้แค่ตอน loadFromSheet
 // จึงเก็บแยกจากคำเตือนที่คำนวณจาก db ได้ทุกเมื่อ ไม่งั้นจะหายไปตอน recompute
 let _metaWarning  = '';
+// [Fix V17-4] getDaily ล้มเหลวโดยที่ getItems สำเร็จ — ต้องค้างไว้เหมือน _metaWarning
+// ไม่งั้นจะถูกล้างทิ้งที่บรรทัด _connWarning = '' แล้วผู้ใช้ไม่มีทางรู้เลย
+let _dailyWarning = '';
 function _paintDataWarn(){
   const el = document.getElementById('dataWarnBanner');
   if(!el) return;
@@ -1267,6 +1365,7 @@ function _paintDataWarn(){
 //   • ลบสินค้าที่ Code ว่างทิ้งไปแล้ว แต่แถบเหลือง "มี 1 รายการที่ Code ว่าง" ยังอยู่
 function _recomputeDataWarnings(){
   const warns = [];
+  if(_dailyWarning) warns.push(_dailyWarning);   // [Fix V17-4]
   if(_metaWarning) warns.push(_metaWarning);
 
   // [Fix V7-4] แถวที่ช่อง No. ว่างในชีตจะได้ no:'' เหมือนกันหมด ทำให้ getStockByNo('')
@@ -1657,16 +1756,7 @@ async function loadFromSheet(opts){
           if(!d.date_th) d.date_th = _formatThDate(d.date);
           // [Fix V16-1] normalize ฟิลด์ข้อความของทุกแถวให้เป็นสตริงด้วย (เหตุผลเดียวกับ db ด้านบน)
           // ค้นหาในหน้าประวัติ (_filterDailySearch) เรียก .toLowerCase() บน no/desc ตรง ๆ
-          d.entries.forEach(e => {
-            if(!e) return;
-            e.location = normLoc(e.location);
-            e.no      = _s(e.no);
-            e.desc    = _s(e.desc);
-            e.code    = _s(e.code);
-            e.unit    = _s(e.unit);
-            e.storage = _s(e.storage);
-            e.note    = _s(e.note);
-          });
+          d.entries.forEach(_normEntry);   // [Fix V17-1] ใช้ตัวเดียวกับ _mergeServerDay
           // [Fix V10-2/V10-3] กู้ธง snap / นน.ต่อหน่วย / หมายเหตุ / รูป ที่ชีตไม่ได้ส่งกลับมา
           _metaRestored += _restoreDailyMeta(d, _localMeta);
           if(pending.indexOf(d.date) < 0) MOCK_DAILY.push(d);
@@ -1686,6 +1776,17 @@ async function loadFromSheet(opts){
           'แต่<b>เครื่องอื่นจะเห็นยอดไม่ตรงกัน</b> กรุณาให้ผู้ดูแลเพิ่มคอลัมน์เหล่านี้ใน Google Apps Script');
       }
       if(pending.length) setTimeout(()=>retryPending(true), 1500);
+      _dailyWarning = '';   // [Fix V17-4] โหลดประวัติสำเร็จแล้ว
+    } else {
+      // [Fix V17-4] เดิมบล็อกนี้ไม่มี else เลย — ถ้า Apps Script ตอบ {ok:false} (แท็บประวัติ
+      // ถูกเปลี่ยนชื่อ/ลบ/สิทธิ์แชร์ผิด) db จะอัปเดตปกติ แถบหัวขึ้นเขียวว่า "โหลดสำเร็จ"
+      // และปุ่ม 🔄 ยังขึ้น toast "✅ โหลดข้อมูลล่าสุดจาก Sheet แล้ว" ด้วย
+      // แต่ MOCK_DAILY เป็นของเก่าค้างจากในเครื่อง (หรือว่างเปล่า) = ยอดสต็อกเป็น 0 ทุกหน้า
+      // ผู้ใช้เชื่อสนิทว่าเป็นข้อมูลล่าสุด แล้วอาจไปสั่งซื้อของซ้ำ
+      console.warn('getDaily failed:', jsonD.error);
+      _dailyWarning = ('โหลด<b>ประวัติรายวัน</b>จากชีตไม่สำเร็จ (' +
+        escHtml(String(jsonD.error || 'ไม่ทราบสาเหตุ')) + ') — <b>ยอดสต็อกที่เห็นอาจไม่ครบหรือไม่ใช่ข้อมูลล่าสุด</b> ' +
+        'รายการวัตถุดิบโหลดได้ปกติ กรุณาให้ผู้ดูแลตรวจแท็บประวัติในชีตและ Apps Script');
     }
 
     updateCounts();
@@ -2241,9 +2342,20 @@ function renderListTable(slice){
       // [FIX-A5] s.unit มาจากชีต ต้อง escape ก่อนยัดเข้า innerHTML
       if(nonKg.length) qtyCell = nonKg.map(s=>s.qty.toLocaleString()+' '+escHtml(s.unit)).join(', ');
       const totalKg = getTotalKgByNo(r.no);
-      if(totalKg>0) kgCell = totalKg.toLocaleString()+' กก.';
+      // [Fix V17-6] เดิมเช็ค totalKg>0 -> ยอดติดลบโชว์ '-' เหมือน "ไม่มีข้อมูล"
+      // ขัดกับ Dashboard ([Fix V16-3] ใช้ kg !== 0) และหน้าสรุปสต็อก ([Fix V12-1] ปล่อยให้เห็น)
+      // ทดสอบจริง: สินค้ายอดสุทธิ -20 กระสอบ (นน./หน่วย 50) -> คอลัมน์ "จำนวน" ขึ้น -20 กระสอบ
+      // แต่คอลัมน์ "รวม (กก.)" ขึ้น '-' ขณะที่ Dashboard ขึ้น -1,000 กก. และหน้าสรุปขึ้น -1,000 กก.
+      // = ตัวเลขสามหน้าไม่ตรงกัน ซึ่งเป็นปัญหาที่ V12-1/V16-3 ตั้งใจกำจัดพอดี
+      if(totalKg !== 0){
+        kgCell = (totalKg < 0)
+          ? '<span style="color:#b52a2a;font-weight:600">' + totalKg.toLocaleString() + ' กก.</span>'
+          : totalKg.toLocaleString() + ' กก.';
+      }
       // เตือนเมื่อมีบางหน่วยที่ยังแปลงเป็น กก. ไม่ได้ ดีกว่าโชว์ยอดที่ต่ำกว่าจริงเฉย ๆ
-      if(_unknownKgCount(r.no) > 0) kgCell += ' <span title="มีบางหน่วยที่ยังไม่มีน้ำหนักต่อหน่วย ยอดนี้จึงยังไม่ครบ">⚠️</span>';
+      // [Fix V17-6] ไม่ต่อท้าย '-' (เดิมได้ '- ⚠️' ซึ่งอ่านไม่รู้เรื่อง)
+      if(_unknownKgCount(r.no) > 0 && kgCell !== '-') kgCell += ' <span title="มีบางหน่วยที่ยังไม่มีน้ำหนักต่อหน่วย ยอดนี้จึงยังไม่ครบ">⚠️</span>';
+      else if(_unknownKgCount(r.no) > 0) kgCell = '<span title="มีหน่วยที่ยังไม่มีน้ำหนักต่อหน่วย จึงคำนวณยอด กก. ไม่ได้">⚠️ ยังไม่ครบ</span>';
     }
     return {qtyCell, kgCell};
   };
@@ -2465,6 +2577,8 @@ function formHTML(r={}){
         <button type="button" onclick="clearImg('')" style="display:block;margin-top:3px;font-size:11px;color:#c0392b;background:none;border:none;cursor:pointer">✕ ลบรูป</button>
       </div>
       <input type="hidden" id="f_image" value="${escHtml(r.image)}">
+      <!-- [Fix V17-2] ธง "ผู้ใช้กดลบรูปเอง" — แยกให้ออกจาก "ช่องว่างเพราะแคชตัดรูปทิ้ง" -->
+      <input type="hidden" id="f_imgCleared" value="0">
     </div>
     <div class="form-group">
       <label>รูปแบบบรรจุภัณฑ์</label>
@@ -2478,6 +2592,7 @@ function formHTML(r={}){
         <button type="button" onclick="clearImg('2')" style="display:block;margin-top:3px;font-size:11px;color:#c0392b;background:none;border:none;cursor:pointer">✕ ลบรูป</button>
       </div>
       <input type="hidden" id="f_image2" value="${escHtml(r.image2)}">
+      <input type="hidden" id="f_imgCleared2" value="0">
     </div>
   </div>`;
 }
@@ -2547,6 +2662,9 @@ function getFormData(){
     notes:   getVal('f_notes'),
     image:   getVal('f_image'),
     image2:  getVal('f_image2'),
+    // [Fix V17-2] '1' = ผู้ใช้กดปุ่ม "✕ ลบรูป" จริง (ไม่ใช่ช่องว่างเพราะยังโหลดชีตไม่เสร็จ)
+    imgCleared:  getVal('f_imgCleared')  === '1',
+    imgCleared2: getVal('f_imgCleared2') === '1',
   };
 }
 
@@ -2749,6 +2867,16 @@ async function saveEdit(id, expectNo){
     const d = getFormData();
     // [Fix 1.7] zero-pad ให้ตรงกับรูปแบบที่ loadFromSheet และ entry ทั้งหมดใช้
     // เดิมเอาค่าดิบจากช่องกรอก ถ้าพิมพ์ 1234 จะไม่แมตช์กับ '001234' ในประวัติ สต็อกหายทั้งก้อน
+    // [Fix V17-9] saveNew เช็ค if(!d.no) แต่ saveEdit ไม่เช็คเลย และแอปนี้รองรับ/คาดหมายว่า
+    // จะมีแถวที่ No. ว่างจริง (มีแถบเตือน _noBlank ชวนให้ไปแก้) ผลคือ:
+    // เปิด "แก้ไข" รายการที่ No. ว่าง -> แก้แค่ Description -> ''.padStart(6,'0') = '000000'
+    // แล้ว payload ส่ง 'No.':'000000' แต่ _findByNo:'' -> เซิร์ฟเวอร์ไปหา "แถวที่ No. ว่าง"
+    // ซึ่งถ้ามีหลายแถว (แถบเตือนบอกเองว่ามี N รายการ) จะเจอแถวแรกเสมอ = แก้ผิดตัว
+    if(!d.no){
+      showToast('⚠️ กรุณากรอกรหัส No. ก่อนบันทึก', 'error');
+      if(editBtn){ editBtn.disabled=false; editBtn.textContent='บันทึก'; }
+      return;
+    }
     const newNo = String(d.no || r.no).padStart(6, '0');
     // [Fix 2.16] saveNew เช็ค No. ซ้ำแต่ saveEdit ไม่เช็ค ทำให้เกิด No. ซ้ำแล้ว Dashboard นับสต็อกสองเท่า
     if(db.some(x => x.id !== id && x.no === newNo)){
@@ -2769,8 +2897,13 @@ async function saveEdit(id, expectNo){
       // [Fix V7-3] ฟอร์มมี 2 ช่องนี้แล้ว ค่าว่างจึงแปลว่าผู้ใช้ตั้งใจล้างค่าจริง ๆ (แบบเดียวกับ pkg/cond)
       loc:     d.loc,
       storage: d.storage,
-      image:   d.image   || '',
-      image2:  d.image2  || '',
+      // [Fix V17-2] บั๊กร้ายแรง: _saveItemsCache ตัด image/image2 ออกเสมอ (base64 ก้อนใหญ่)
+      // ถ้าเปิดแอปจากแคชแล้วชีตยังโหลดไม่เสร็จ (เน็ตช้า/ชีตล่ม/timeout) ฟอร์มจะวาด value=""
+      // แล้ว saveEdit ส่ง pic:'' ทับลงชีต -> รูปสินค้าและรูปบรรจุภัณฑ์หายถาวร
+      // ทั้งที่ผู้ใช้ไม่ได้แตะช่องรูปเลยและไม่มีคำเตือนใด ๆ
+      // ตอนนี้ค่าว่างจะทับได้เฉพาะเมื่อผู้ใช้กด "✕ ลบรูป" จริง (ธง imgCleared)
+      image:   d.image   || (d.imgCleared  ? '' : (r.image  || '')),
+      image2:  d.image2  || (d.imgCleared2 ? '' : (r.image2 || '')),
       notes:   d.notes   || '',
       stocks:  [],
     };
@@ -2875,7 +3008,17 @@ async function saveEdit(id, expectNo){
   }
 }
 
+// [Fix V17-5] เดิม deleteItem ไม่มีธงกันกดซ้ำและไม่ disable ปุ่มเลย (ต่างจาก saveNew ที่มี
+// _saveNewInProgress และ saveEdit ที่ disable .btn-primary) และ modal ยังเปิดค้างตลอดช่วงรอ POST
+// (นานได้ถึง REQ_TIMEOUT = 25 วิ) เพราะ closeModal() อยู่ข้างใน _applyLocalDelete
+// -> เน็ตช้า ผู้ใช้กด "ลบ" ซ้ำ -> คำขอที่ 2 ลบรหัสที่หายจากชีตแล้ว -> error ->
+//    _itemExistsOnSheet คืน false -> _applyLocalDelete() ทำงานรอบที่สอง -> x.row-- ถูกรันซ้ำ
+// -> row ของสินค้าทุกตัวใต้แถวที่ลบต่ำกว่าความจริง 1 แถว -> การกด "แก้" ครั้งถัดไปส่ง _row ผิด
+//    และ _row มีลำดับสำคัญเหนือ _findByNo -> Apps Script เขียนทับแถวของสินค้าตัวอื่นทั้งแถว
+//    (Code / No. / Description / รูป) เสียหายถาวรบนชีต — บั๊กคลาสเดียวกับที่ [Fix V10-1] แก้ไว้
+let _deleteInProgress = false;
 async function deleteItem(id, expectNo){
+  if(_deleteInProgress) return;
   const r = _resolveItem(id, expectNo);   // [Fix V10-1]
   if(!r){ _staleItemToast(); return; }
   // [Fix V7-6] เดิมเตือนแค่ "ยืนยันการลบรายการนี้?" แต่ประวัติรายวันไม่ได้ถูกลบไปด้วย
@@ -2887,9 +3030,21 @@ async function deleteItem(id, expectNo){
       'ประวัติจะยังคงอยู่ในระบบ (ไม่ถูกลบ) และถ้าเพิ่มรหัส ' + r.no + ' กลับเข้ามาใหม่ภายหลัง\n' +
       'ยอดสต็อกเดิมทั้งหมดจะกลับมาแสดงอีกครั้ง' : '');
   if(!await customConfirm(_delMsg)) return;
+  // [Fix V17-5] เช็คอีกครั้งหลัง await — ระหว่างที่กล่องยืนยันเปิดอยู่ ผู้ใช้กดปุ่มซ้ำได้
+  if(_deleteInProgress) return;
+  _deleteInProgress = true;
+  const _delBtn = document.querySelector('.modal-footer .btn-danger');
+  const _delBtnTxt = _delBtn ? _delBtn.textContent : '';
+  if(_delBtn){ _delBtn.disabled = true; _delBtn.textContent = 'กำลังลบ...'; }
+  const _editBtnLock = document.querySelector('.modal-footer .btn-primary');
+  if(_editBtnLock) _editBtnLock.disabled = true;   // กันกด "บันทึก" สวนระหว่างรอลบ
 
   // [Fix 1.6] ในชีตแถวเลื่อนขึ้น 1 แถวหลังลบ ถ้าไม่ปรับตาม การแก้ไขครั้งถัดไปจะไปทับรายการอื่น
+  // [Fix V17-5] + ธง _applied กันรันซ้ำอีกชั้น เผื่อมีเส้นทางใหม่เรียกซ้ำในอนาคต
+  let _applied = false;
   const _applyLocalDelete = () => {
+    if(_applied) return;
+    _applied = true;
     const deletedRow = r.row;
     db = db.filter(x=>x.id!==r.id);
     if(deletedRow) db.forEach(x => { if(x.row && x.row > deletedRow) x.row--; });
@@ -2932,6 +3087,11 @@ async function deleteItem(id, expectNo){
       showToast('❌ ลบไม่สำเร็จ: ' + e.message +
         (_still === null ? ' — ตรวจสอบในชีตไม่ได้ในตอนนี้ กรุณากด 🔄 แล้วตรวจดูอีกครั้ง' : ''), 'error');
     }
+  } finally {
+    // [Fix V17-5] ปลดล็อกเสมอ ทั้งเส้นทางสำเร็จและล้มเหลว
+    _deleteInProgress = false;
+    if(_delBtn){ _delBtn.disabled = false; _delBtn.textContent = _delBtnTxt || 'ลบ'; }
+    if(_editBtnLock) _editBtnLock.disabled = false;
   }
 }
 
@@ -3121,6 +3281,8 @@ async function uploadImg(input, target=''){
     document.getElementById('imgPreview'+target).src = base64;
     document.getElementById('imgPreviewArea'+target).style.display = 'block';
     document.getElementById('f_image'+target).value = base64;
+    const _fc2 = document.getElementById('f_imgCleared'+target);   // [Fix V17-2]
+    if(_fc2) _fc2.value='0';
     document.getElementById('imgZoneText'+target).textContent =
       '✅ โหลดรูปแล้ว (~' + Math.round(base64.length/1024) + ' KB)';
     document.getElementById('imgZone'+target).style.borderColor='#1e8449';
@@ -3174,6 +3336,9 @@ function compressImageToBase64(file, maxBytes = 40000){
 
 function clearImg(target=''){
   document.getElementById('f_image'+target).value='';
+  // [Fix V17-2] บันทึกว่าเป็นการลบรูปโดยเจตนาของผู้ใช้
+  const _fc = document.getElementById('f_imgCleared'+target);
+  if(_fc) _fc.value='1';
   document.getElementById('imgInput'+target).value='';
   document.getElementById('imgPreviewArea'+target).style.display='none';
   document.getElementById('imgZoneText'+target).textContent='คลิกเพื่อเลือกรูป';
@@ -3429,20 +3594,19 @@ function renderStockEdit(container){
     });
     const MAX_SHOW = 40;
     const shown = filtered.slice(0, MAX_SHOW);
-    // [Fix 2.6] ล้าง state ของการ์ดที่ไม่ได้แสดงอยู่ ไม่งั้นค่าที่ผู้ใช้กรอกค้างไว้ก่อนพิมพ์ค้นหาใหม่
-    // จะถูกส่งขึ้นชีตพร้อมกันตอนกดบันทึก โดยที่ผู้ใช้มองไม่เห็นบนหน้าจอ
-    // [Fix V16-4] เดิมล้างแต่ _seStocks ลืม _seImgs กับ _seMode
-    //   • รูป: แนบรูปให้สินค้า A (ยังไม่กรอกจำนวน) -> พิมพ์ค้นหาสินค้าอื่น -> กลับมาค้นหา A
-    //     รูปเดิมยังอยู่ แล้วถูกแนบไปกับการบันทึกครั้งถัดไป (อาการเดียวกับ [FIX-A10] ที่แก้ไปครึ่งเดียว)
-    //   • โหมด: ตั้ง "↺ แทนที่ยอดเดิม" ไว้แล้วเปลี่ยนคำค้นหา พอการ์ดกลับมาก็ยังเป็นโหมดแทนที่อยู่
-    //     ซึ่งล้างยอดสะสมทั้งหมดของสินค้านั้น — เสี่ยงเผลอกดบันทึกโดยไม่ได้ตั้งใจ
-    const shownIds = new Set(shown.map(r => r.id));
-    Object.keys(window._seStocks || {}).forEach(k => {
-      if(shownIds.has(Number(k))) return;
-      window._seStocks[k] = [{location:'', loc:'', qty:'', unit:''}];
-      if(window._seImgs) delete window._seImgs[k];
-      if(window._seMode) delete window._seMode[k];
-    });
+    // [Fix V17-3] ถอดบล็อกที่ล้าง _seStocks / _seImgs / _seMode ของการ์ดที่ไม่ได้แสดงออก
+    //
+    // เหตุผลเดิมของ [Fix 2.6] คือกลัวว่าค่าที่มองไม่เห็นจะ "ถูกส่งขึ้นชีตพร้อมกันตอนกดบันทึก"
+    // แต่ saveStockItem(itemId) อ่านเฉพาะ window._seStocks[itemId] ของสินค้าตัวเดียวเท่านั้น
+    // จึงไม่มีทางส่งค่าของการ์ดอื่นได้เลย การล้างจึงมีแต่โทษ:
+    //   • กรอก 20 กระสอบ -> พิมพ์ค้นหาต่ออีกคำ (การ์ดหายจากจอ) -> ค่าที่กรอกถูกล้างทันที
+    //     ลบคำค้นหากลับมา ช่องว่างเปล่า ไม่มีอะไรเตือน (ทดสอบจริงแล้วเกิดทุกครั้ง)
+    //   • หนักกว่านั้น: การ์ดถูกตัดที่ MAX_SHOW=40 และ saveStockItem ดันสินค้าที่เพิ่งบันทึก
+    //     ขึ้นลำดับ 1 ทุกครั้ง -> กรอกค่าไว้ที่ลำดับ 40 แล้วไปกดบันทึกสินค้าตัวอื่น
+    //     ตัวลำดับ 40 หลุดออกนอก top-40 แล้วค่าหาย โดยผู้ใช้ไม่ได้แตะช่องค้นหาเลย
+    //   • _hasUnsavedSEInput() ดูแค่ row.qty พอถูกล้างก็คืน false -> กด 🔄 ก็ไม่เตือนอีกต่อไป
+    //
+    // การ์ดที่ไม่ได้แสดงจะถูกวาดใหม่จาก state เดิมเมื่อกลับมาค้นหาเจอ ซึ่งเป็นสิ่งที่ผู้ใช้คาดหวัง
     window._seShown = shown.map(r => r.id);
     let html = shown.map(r => renderItem(r)).join('');
     if(filtered.length > MAX_SHOW){
@@ -3792,8 +3956,8 @@ async function _mergeServerDay(day){
       // ถ้าชีตไม่เก็บ kgPerUnit ลายเซ็นจะไม่ตรงกันเลย -> กู้ธง snap ไม่สำเร็จ -> ยอดเก่ากลับมาบวกใหม่
       // ตอนนี้ใช้ _entryCoreSig ที่ไม่รวม kgPerUnit และกู้คืน kgPerUnit/note ให้ด้วย
       const _meta = _snapshotDailyMeta([day]);
-      day.entries = srv.entries.filter(e => e).map(e =>
-        Object.assign({}, e, {location: normLoc(e.location||'')}));
+      // [Fix V17-1] เดิม normalize แค่ location -> no ไม่ถูกเติมศูนย์ / desc เป็น number ได้
+      day.entries = srv.entries.filter(e => e).map(e => _normEntry(Object.assign({}, e)));
       _restoreDailyMeta(day, _meta);
       _clearStockCache(); _clearDailyIndex();
       return {ok:true, added:_newCount, replaced:true};
@@ -3827,7 +3991,7 @@ async function _mergeServerDay(day){
       if(di >= 0){ delSigs.splice(di, 1); delCore.splice(di, 1); return; }
       const dc = delCore.indexOf(c);
       if(dc >= 0){ delSigs.splice(dc, 1); delCore.splice(dc, 1); return; }
-      add.push(Object.assign({}, e, {location: normLoc(e.location||'')}));
+      add.push(_normEntry(Object.assign({}, e)));   // [Fix V17-1]
     });
     if(add.length){
       // [Fix R-1] เดิมใช้ unshift() แทรกแถวที่ดึงจากชีตไว้ "หน้าสุด" ของวัน
@@ -4091,7 +4255,11 @@ function renderStockView(container){
   // หา code ที่มีสต็อก
   // [Fix V9-2] normalize เป็นสตริงเสมอ — แถวที่ไม่มีฟิลด์ code เลยจะได้ '' ไม่ใช่ undefined
   const availCodes = [...new Set(withStock.map(r => r.code || ''))];
-  let selectedSVCode = availCodes[0] || 'all';
+  // [Fix V17-20] เดิม availCodes[0] || 'all' — ถ้าสินค้าที่มีสต็อก "ตัวแรกตามลำดับแถวในชีต"
+  // มีช่อง Code ว่าง จะได้ '' ซึ่ง falsy -> ตกเป็น 'all' -> _s(r.code) === 'all' ไม่ตรงกับอะไรเลย
+  // -> หน้าเปิดมาขึ้น "🔍 ไม่พบข้อมูลสต็อก" ทั้งที่มีของ และไม่มีปุ่ม Group ไหนถูก highlight
+  // (ทำให้กลุ่ม 'อื่น ๆ' ที่ [Fix V9-2] เพิ่มไว้ใช้งานไม่ได้ในการเปิดหน้าครั้งแรก)
+  let selectedSVCode = availCodes.length ? availCodes[0] : 'all';
 
   // id ของปุ่มต้องใช้ได้กับ Code ว่างด้วย (เดิมจะกลายเป็น "svbtn_" ซ้ำกันหมด)
   const _svBtnId = (c) => 'svbtn_' + (c ? String(c).replace(/[^A-Za-z0-9]/g,'') : '__none');
@@ -4769,6 +4937,7 @@ function exportVariancePDF(){
   const same = v.allNos.length - increased - decreased;
 
   document.getElementById('printTitle').textContent = 'รายงานเปรียบเทียบสต็อกวัตถุดิบ';
+  document.getElementById('printHeader').classList.add('on');   // [Fix V17-16] รายงานนี้ใช้หัวกลาง
   document.getElementById('printSubtitle').textContent = '';
 
   main.innerHTML = `
@@ -6646,6 +6815,7 @@ function _exportPrintView(entries, days, dateLabel, codeLabel, locLabel){
   // เคลียร์หัวกระดาษกลางที่อาจค้างจากรายงานก่อนหน้า (ไฟล์นี้มีหัวของตัวเองอยู่แล้ว)
   document.getElementById('printTitle').textContent = '';
   document.getElementById('printSubtitle').textContent = '';
+  document.getElementById('printHeader').classList.remove('on');   // [Fix V17-16]
 
   // จัดกลุ่มตามวัน
   const byDay = {};
@@ -6670,12 +6840,12 @@ function _exportPrintView(entries, days, dateLabel, codeLabel, locLabel){
       <div style="background:#1a5276;color:white;padding:7px 12px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0">📅 ${escHtml(g.date_th)}</div>
       <table style="width:100%;border-collapse:collapse">
         <thead><tr style="background:#d6eaf8">
-          <th style="padding:6px 10px;border:1px solid #ddd;text-align:left;font-size:11px">No.</th>
-          <th style="padding:6px 10px;border:1px solid #ddd;text-align:left;font-size:11px">ชื่อสินค้า</th>
-          <th style="padding:6px 10px;border:1px solid #ddd;text-align:left;font-size:11px">Code</th>
-          <th style="padding:6px 10px;border:1px solid #ddd;text-align:left;font-size:11px">Location</th>
-          <th style="padding:6px 10px;border:1px solid #ddd;text-align:right;font-size:11px">จำนวน</th>
-          <th style="padding:6px 10px;border:1px solid #ddd;text-align:right;font-size:11px">รวม (กก.)</th>
+          <th style="padding:6px 10px;border:1px solid #ddd;text-align:left;font-size:11px;color:#1a2535;font-weight:700">No.</th>
+          <th style="padding:6px 10px;border:1px solid #ddd;text-align:left;font-size:11px;color:#1a2535;font-weight:700">ชื่อสินค้า</th>
+          <th style="padding:6px 10px;border:1px solid #ddd;text-align:left;font-size:11px;color:#1a2535;font-weight:700">Code</th>
+          <th style="padding:6px 10px;border:1px solid #ddd;text-align:left;font-size:11px;color:#1a2535;font-weight:700">Location</th>
+          <th style="padding:6px 10px;border:1px solid #ddd;text-align:right;font-size:11px;color:#1a2535;font-weight:700">จำนวน</th>
+          <th style="padding:6px 10px;border:1px solid #ddd;text-align:right;font-size:11px;color:#1a2535;font-weight:700">รวม (กก.)</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
