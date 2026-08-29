@@ -1073,8 +1073,8 @@ tbody tr:hover {
 // GitHub Pages เก็บแคชไฟล์ HTML ไว้ที่ CDN ราว 10 นาที และเบราว์เซอร์เก็บซ้ำอีกชั้น
 // หลังอัปโหลดไฟล์ใหม่จึงมักยังเห็นของเก่าอยู่ — เดิมไม่มีทางรู้เลยว่าเห็นเวอร์ชันไหน
 // ถ้าเลขที่แสดงไม่ตรงกับไฟล์ที่เพิ่งอัปโหลด ให้กด Ctrl+Shift+R (หรือ Cmd+Shift+R บน Mac)
-const APP_VERSION = 'v17';
-const APP_BUILD   = '18 ส.ค. 2569';
+const APP_VERSION = 'v18';
+const APP_BUILD   = '29 ส.ค. 2569';
 (function _paintVersion(){
   const set = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
   set('appVersion', APP_VERSION);
@@ -1186,6 +1186,37 @@ function _locationOptionsHtml(selected){
   }
   return '<option value="">- เลือก Location -</option>' + extra +
     LOCATION_OPTIONS.map(loc => `<option value="${escHtml(loc)}" ${sel===loc?'selected':''}>${escHtml(loc)}</option>`).join('');
+}
+
+// ===== [V18-1] Location ประจำวัน — ล็อกไว้ทั้งรอบตรวจ ไม่ต้องเลือกใหม่ทุกสินค้า =====
+// เก็บพร้อมวันที่ ถ้าข้ามวันแล้วจะไม่ถูกนำมาใช้เอง (กันบันทึกผิดโรงงานในวันถัดไป)
+const _SE_DEFLOC_KEY = 'spm_se_default_loc';
+function _getSEDefaultLoc(){
+  try{
+    const raw = JSON.parse(localStorage.getItem(_SE_DEFLOC_KEY) || 'null');
+    if(raw && raw.date === localDateStr() && LOCATION_OPTIONS.indexOf(raw.loc) > -1) return raw.loc;
+  }catch(e){}
+  return '';
+}
+function _setSEDefaultLoc(loc){
+  window._seDefaultLoc  = loc || '';
+  window._seDefLocDate  = localDateStr();
+  try{ localStorage.setItem(_SE_DEFLOC_KEY, JSON.stringify({date: window._seDefLocDate, loc: window._seDefaultLoc})); }catch(e){}
+}
+function _initSEDefaultLoc(){
+  // โหลดจากเครื่องเฉพาะตอนยังไม่มีค่าในหน่วยความจำ หรือข้ามวันแล้ว
+  if(typeof window._seDefaultLoc !== 'string' || window._seDefLocDate !== localDateStr()){
+    window._seDefaultLoc = _getSEDefaultLoc();
+    window._seDefLocDate = localDateStr();
+  }
+  return window._seDefaultLoc;
+}
+// แถวกรอกใหม่ทุกแถวเกิดจากฟังก์ชันนี้ที่เดียว จะได้ prefill Location ตรงกันหมด
+// _autoLoc = true แปลว่า Location ในแถวนี้ระบบเติมให้ ยังไม่ได้ถูกคนเลือกเอง
+// (ใช้ตอนเปลี่ยน Location ประจำวันกลางคัน จะได้อัปเดตเฉพาะแถวที่ระบบเติม ไม่ทับของที่คนเลือกเอง)
+function _seNewRow(){
+  const d = window._seDefaultLoc || '';
+  return {location: d, _autoLoc: !!d, loc:'', qty:'', unit:'', note:'', kgPerUnit:''};
 }
 
 // ===== รายชื่อหน่วยคงที่ ให้เลือกแบบบังคับ ไม่ให้พิมพ์เองอิสระ =====
@@ -3448,6 +3479,7 @@ function formatQty(qty, unit, no, overrideWpu){
 
 // ===== หน้าอัปเดตสต็อก =====
 function renderStockEdit(container){
+  _initSEDefaultLoc();   // [V18-1] ต้องเรียกก่อนสร้างแถวกรอก ไม่งั้นแถวแรกจะไม่ได้ Location ประจำวัน
   // ===== [Fix V8-6] กันค่าที่กรอกค้างไว้หายเงียบ ๆ =====
   // เดิมล้างค่าที่กรอกทั้งหมดทุกครั้งที่เข้าหน้านี้ ถ้าผู้ใช้กรอกจำนวนไว้หลายรายการแล้วเผลอกด ☰
   // ไปหน้าอื่น (หรือกดลิงก์ใน Dashboard) แล้วกลับเข้ามา ค่าที่กรอกไว้หายทั้งหมดโดยไม่มีคำเตือน
@@ -3466,7 +3498,7 @@ function renderStockEdit(container){
   if(!window._seMode) window._seMode = {};
   db.forEach(r => {
     // ช่องกรอกว่างเสมอ ไม่ดึงค่าเดิมมาใส่ (ยกเว้นค่าที่ผู้ใช้กรอกค้างไว้แล้วยังไม่ได้บันทึก)
-    if(!window._seStocks[r.id]) window._seStocks[r.id] = [{location:'', loc:'', qty:'', unit:''}];
+    if(!window._seStocks[r.id]) window._seStocks[r.id] = [_seNewRow()];
   });
 
   const renderItem = (r) => {
@@ -3474,7 +3506,7 @@ function renderStockEdit(container){
     const currentStocks = getStockByNoAndLoc(r.no);
     const hasStock = currentStocks.length > 0;
     // input ใหม่สำหรับบวกเพิ่ม
-    if(!window._seStocks[r.id]) window._seStocks[r.id] = [{location:'',loc:'',qty:'',unit:''}];
+    if(!window._seStocks[r.id]) window._seStocks[r.id] = [_seNewRow()];
     const stocks = window._seStocks[r.id];
     // [Fix 2.5] จำโหมดที่ผู้ใช้เลือกไว้ ไม่งั้นพิมพ์ค้นหาแล้ว select ถูกสร้างใหม่และรีเซ็ตเป็น "บวกเพิ่ม" เงียบ ๆ
     if(!window._seMode) window._seMode = {};
@@ -3620,6 +3652,17 @@ function renderStockEdit(container){
   <div style="margin-bottom:14px">
     <div style="font-size:15px;font-weight:600;color:var(--navy);margin-bottom:4px">✏️ อัปเดตสต็อกสินค้า</div>
     <div style="font-size:12px;color:var(--ink-3);margin-bottom:10px">ค้นหาสินค้า หรือเลือก Group แล้วกรอกจำนวนที่รับเพิ่ม</div>
+
+    <!-- [V18-1] Location ประจำวัน: ตั้งครั้งเดียวตอนเริ่มตรวจ แถวกรอกใหม่ทุกแถวจะถูกเลือกให้เอง -->
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#eaf2f8;border:1px solid #aed6f1;border-radius:8px;padding:8px 12px;margin-bottom:10px">
+      <span style="font-size:12px;font-weight:600;color:#1a5276;white-space:nowrap">📍 Location ที่ตรวจวันนี้</span>
+      <select id="seDefLoc" onchange="window._applySEDefaultLoc(this.value)"
+        style="padding:5px 10px;border:1px solid #aed6f1;border-radius:6px;font-size:13px;font-family:inherit;color:var(--ink);background:white;min-width:150px">
+        ${_locationOptionsHtml(window._seDefaultLoc||'')}
+      </select>
+      <span id="seDefLocHint" style="font-size:11px;color:#1a5276;opacity:.85"></span>
+    </div>
+
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px" id="seGroupBtns">
       ${renderGroupBtns()}
     </div>
@@ -3653,6 +3696,42 @@ function renderStockEdit(container){
     const result = renderFiltered(group, q);
     wrap.innerHTML = result || emptyState('🔍','ไม่พบสินค้าใน Group นี้');
     _paintSERows();   // [Fix 1.1] ต้องวาดแถวกรอกด้วย ไม่งั้นการ์ดจะไม่มีช่องกรอกเลย
+  };
+
+  // ===== [V18-1] ตั้ง / เปลี่ยน Location ประจำวัน =====
+  const _paintDefLocHint = () => {
+    const el = document.getElementById('seDefLocHint');
+    if(!el) return;   // [Fix V11-2] อาจถูกเรียกหลังออกจากหน้านี้ไปแล้ว
+    el.textContent = window._seDefaultLoc
+      ? 'ทุกแถวใหม่จะถูกตั้งเป็น "' + window._seDefaultLoc + '" ให้เอง — เปลี่ยนรายแถวได้ตามปกติ'
+      : 'ยังไม่ได้ตั้ง — ต้องเลือก Location เองทีละแถว';
+  };
+  _paintDefLocHint();
+
+  window._applySEDefaultLoc = (loc) => {
+    _setSEDefaultLoc(loc);
+    // เติมให้เฉพาะแถวที่ยัง "ว่าง" เท่านั้น แถวที่ผู้ใช้เลือก Location ไว้เองแล้วจะไม่ถูกทับ
+    let filled = 0;
+    Object.keys(window._seStocks || {}).forEach(id => {
+      (window._seStocks[id] || []).forEach(row => {
+        if(!row) return;
+        const isEmpty = !String(row.location || '').trim();
+        if(isEmpty || row._autoLoc){
+          if(row.location !== (loc || '')) filled++;
+          row.location  = loc || '';
+          row._autoLoc  = !!loc;
+        }
+      });
+    });
+    _paintSERows();
+    _paintDefLocHint();
+    const sel = document.getElementById('seDefLoc');
+    if(sel && sel.value !== (loc||'')) sel.value = loc || '';
+    if(loc){
+      showToast('📍 ตั้ง Location ประจำวันเป็น "' + loc + '"' + (filled ? (' — เติมให้แถวที่ยังว่าง ' + filled + ' แถว') : ''));
+    } else {
+      showToast('ยกเลิก Location ประจำวันแล้ว — ต้องเลือกเองทีละแถว');
+    }
   };
 
   window._doSEFilter = _debounce(doFilter, 200);
@@ -3736,8 +3815,10 @@ function removeSEImg(itemId, idx){
 function updateSE(itemId, rowIdx, field, val){
   if(!window._seStocks) window._seStocks = {};
   if(!window._seStocks[itemId]) window._seStocks[itemId] = [];
-  if(!window._seStocks[itemId][rowIdx]) window._seStocks[itemId][rowIdx] = {location:'',loc:'',qty:'',unit:'',kgPerUnit:''};
+  if(!window._seStocks[itemId][rowIdx]) window._seStocks[itemId][rowIdx] = _seNewRow();
   window._seStocks[itemId][rowIdx][field] = val;
+  // [V18-1] พอคนเลือก Location เองแล้ว ห้ามให้ "Location ประจำวัน" มาเปลี่ยนทีหลังอีก
+  if(field === 'location') window._seStocks[itemId][rowIdx]._autoLoc = false;
 }
 
 // เปลี่ยนหน่วย → โชว์/ซ่อนช่องกรอกน้ำหนักต่อหน่วยให้เหมาะกับหน่วยที่เลือก แล้วอัปเดตยอดคำนวณสด
@@ -3810,7 +3891,7 @@ function _seModeHint(itemId){
 function addSERow(itemId){
   if(!window._seStocks) window._seStocks = {};
   if(!window._seStocks[itemId]) window._seStocks[itemId] = [];
-  window._seStocks[itemId].push({location:'',loc:'',qty:'',unit:'',note:'',kgPerUnit:''});
+  window._seStocks[itemId].push(_seNewRow());   // [V18-1] แถวใหม่ได้ Location ประจำวันมาให้เลย
   // [Fix 1.1] วาดใหม่ทั้งชุดจาก state แทนการ appendChild เอง
   // เดิมผสมสองวิธี (appendChild ที่นี่ vs innerHTML ใน _renderSERows) ทำให้ index ของแถวหลุดกันได้ง่าย
   _renderSERows(itemId);
@@ -3820,7 +3901,7 @@ function removeSERow(itemId, rowIdx){
   if(!window._seStocks || !window._seStocks[itemId]) return;
   window._seStocks[itemId].splice(rowIdx, 1);
   // เหลืออย่างน้อย 1 แถวเสมอ ไม่งั้นการ์ดจะไม่มีช่องกรอกเลย
-  if(!window._seStocks[itemId].length) window._seStocks[itemId] = [{location:'',loc:'',qty:'',unit:'',note:'',kgPerUnit:''}];
+  if(!window._seStocks[itemId].length) window._seStocks[itemId] = [_seNewRow()];
   // re-render ทั้งหมด — index reassigned ถูกต้อง
   _renderSERows(itemId);
 }
@@ -4183,7 +4264,7 @@ async function saveStockItem(itemId, btnEl){
     if(syncOk) _clearPending(dateStr); else _markPending(dateStr);
 
     // reset input (ทำหลังจาก sync เสร็จแล้วเท่านั้น กันกดซ้ำระหว่างรอ)
-    window._seStocks[itemId] = [{location:'',loc:'',qty:'',unit:''}];
+    window._seStocks[itemId] = [_seNewRow()];   // [V18-1] คง Location ประจำวันไว้ให้แถวถัดไป
     // [Fix 2.5] กลับเป็นโหมดปกติหลังบันทึก กันเผลอ "นับใหม่" ซ้ำโดยไม่ตั้งใจ
     if(window._seMode) window._seMode[itemId] = 'add';
     if(window._seImgs) window._seImgs[itemId] = [];
