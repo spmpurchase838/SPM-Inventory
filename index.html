@@ -1073,7 +1073,7 @@ tbody tr:hover {
 // GitHub Pages เก็บแคชไฟล์ HTML ไว้ที่ CDN ราว 10 นาที และเบราว์เซอร์เก็บซ้ำอีกชั้น
 // หลังอัปโหลดไฟล์ใหม่จึงมักยังเห็นของเก่าอยู่ — เดิมไม่มีทางรู้เลยว่าเห็นเวอร์ชันไหน
 // ถ้าเลขที่แสดงไม่ตรงกับไฟล์ที่เพิ่งอัปโหลด ให้กด Ctrl+Shift+R (หรือ Cmd+Shift+R บน Mac)
-const APP_VERSION = 'v26';
+const APP_VERSION = 'v27';
 const APP_BUILD   = '7 ก.ย. 2569';
 (function _paintVersion(){
   const set = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
@@ -1915,7 +1915,9 @@ async function loadFromSheet(opts){
           // ค้นหาในหน้าประวัติ (_filterDailySearch) เรียก .toLowerCase() บน no/desc ตรง ๆ
           d.entries.forEach(_normEntry);   // [Fix V17-1] ใช้ตัวเดียวกับ _mergeServerDay
           // [Fix V10-2/V10-3] กู้ธง snap / นน.ต่อหน่วย / หมายเหตุ / รูป ที่ชีตไม่ได้ส่งกลับมา
-          _metaRestored += _restoreDailyMeta(d, _localMeta);
+          // ไม่นับรูป เพราะ getDaily&light=1 ตั้งใจไม่ส่งรูปมาอยู่แล้ว
+          // (snap / kgPerUnit / note ยังนับปกติ — สามตัวนั้นกระทบยอดสต็อกจริง)
+          _metaRestored += _restoreDailyMeta(d, _localMeta, false);
           if(pending.indexOf(d.date) < 0) MOCK_DAILY.push(d);
         });
       keep.forEach(d => MOCK_DAILY.push(d));
@@ -1927,9 +1929,9 @@ async function loadFromSheet(opts){
       // [Fix V10-2/V10-3] ถ้าต้องกู้ฟิลด์เสริมบ่อย ๆ = ชีตไม่ได้เก็บคอลัมน์เหล่านั้น
       // เตือนให้ไปแก้ Apps Script เพราะข้อมูลจะรอดแค่ในเครื่องนี้เท่านั้น (เครื่องอื่นจะเห็นยอดผิด)
       if(_metaRestored > 0){
-        console.warn('[V10] กู้ฟิลด์เสริมของประวัติรายวันจากข้อมูลในเครื่อง ' + _metaRestored + ' ค่า — ชีตอาจไม่ได้เก็บคอลัมน์ snap / kgPerUnit / note / images');
+        console.warn('[V10] กู้ฟิลด์เสริมของประวัติรายวันจากข้อมูลในเครื่อง ' + _metaRestored + ' ค่า — ชีตอาจไม่ได้เก็บคอลัมน์ snap / kgPerUnit / note');
         _metaWarning = ('ชีตดูเหมือน<b>ไม่ได้เก็บข้อมูลบางคอลัมน์ของประวัติรายวัน</b> ' +
-          '(ธง "นับสต็อกใหม่" / น้ำหนักต่อหน่วยรายแถว / หมายเหตุ / รูป) — เครื่องนี้กู้คืนให้จากข้อมูลที่เก็บไว้ในเครื่องแล้ว ' +
+          '(ธง "นับสต็อกใหม่" / น้ำหนักต่อหน่วยรายแถว / หมายเหตุ) — เครื่องนี้กู้คืนให้จากข้อมูลที่เก็บไว้ในเครื่องแล้ว ' +
           'แต่<b>เครื่องอื่นจะเห็นยอดไม่ตรงกัน</b> กรุณาให้ผู้ดูแลเพิ่มคอลัมน์เหล่านี้ใน Google Apps Script');
       }
       if(pending.length) setTimeout(()=>retryPending(true), 1500);
@@ -4200,8 +4202,12 @@ function _snapshotDailyMeta(days){
   return map;
 }
 // เอาฟิลด์เสริมกลับไปแปะให้แถวที่ชีตส่งกลับมา (เฉพาะช่องที่ชีตไม่ได้ส่งค่ามา)
-function _restoreDailyMeta(day, map){
+// countImages = false -> ยังกู้รูปให้เหมือนเดิม แต่ไม่นับเข้ายอดที่ใช้ตัดสินว่า "ชีตไม่เก็บคอลัมน์"
+// [PERF-4c] จำเป็นเพราะตั้งแต่โหลดประวัติแบบ light เราขอชีตไม่ส่งรูปมาเองอยู่แล้ว
+// ช่องรูปที่ว่างจึงเป็นเรื่องปกติ ไม่ใช่สัญญาณว่าชีตมีปัญหา
+function _restoreDailyMeta(day, map, countImages){
   if(!day || !Array.isArray(day.entries) || !map) return 0;
+  const _cntImg = (countImages !== false);
   let restored = 0;
   day.entries.forEach(e => {
     if(!e) return;
@@ -4212,7 +4218,8 @@ function _restoreDailyMeta(day, map){
     if(meta.kgPerUnit && !(toNum(e.kgPerUnit) > 0)){ e.kgPerUnit = meta.kgPerUnit; restored++; }
     if(meta.note && !e.note){ e.note = meta.note; restored++; }
     if(meta.images && (!e.images || !e.images.length)){
-      e.images = meta.images; restored++;
+      e.images = meta.images;
+      if(_cntImg) restored++;
       delete e.imgLight;   // [PERF-4] ได้รูปจากแคชในเครื่องแล้ว ไม่ต้องไปดึงจากชีตซ้ำ
     }
   });
