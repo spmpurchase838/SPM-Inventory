@@ -1073,7 +1073,7 @@ tbody tr:hover {
 // GitHub Pages เก็บแคชไฟล์ HTML ไว้ที่ CDN ราว 10 นาที และเบราว์เซอร์เก็บซ้ำอีกชั้น
 // หลังอัปโหลดไฟล์ใหม่จึงมักยังเห็นของเก่าอยู่ — เดิมไม่มีทางรู้เลยว่าเห็นเวอร์ชันไหน
 // ถ้าเลขที่แสดงไม่ตรงกับไฟล์ที่เพิ่งอัปโหลด ให้กด Ctrl+Shift+R (หรือ Cmd+Shift+R บน Mac)
-const APP_VERSION = 'v18';
+const APP_VERSION = 'v20';
 const APP_BUILD   = '29 ส.ค. 2569';
 (function _paintVersion(){
   const set = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
@@ -1216,7 +1216,8 @@ function _initSEDefaultLoc(){
 // (ใช้ตอนเปลี่ยน Location ประจำวันกลางคัน จะได้อัปเดตเฉพาะแถวที่ระบบเติม ไม่ทับของที่คนเลือกเอง)
 function _seNewRow(){
   const d = window._seDefaultLoc || '';
-  return {location: d, _autoLoc: !!d, loc:'', qty:'', unit:'', note:'', kgPerUnit:''};
+  // lotF / lotRem / lotRemU ใช้เฉพาะหน่วย "เลท" [V20-1] — เป็น state ฝั่งหน้าเว็บ ไม่ได้ส่งขึ้นชีตตรง ๆ
+  return {location: d, _autoLoc: !!d, loc:'', qty:'', unit:'', note:'', kgPerUnit:'', lotF:'', lotRem:'', lotRemU:'bag'};
 }
 
 // ===== รายชื่อหน่วยคงที่ ให้เลือกแบบบังคับ ไม่ให้พิมพ์เองอิสระ =====
@@ -1224,10 +1225,69 @@ const UNIT_OPTIONS = [
   {value:'กก.',     label:'กก. (กิโลกรัม)'},
   {value:'กระสอบ',  label:'กระสอบ'},
   {value:'bigbag',  label:'บิ๊กแบ็ค (Bigbag) ≈ 1,000 กก.'},
+  {value:'500 กก.', label:'500 กก.'},
   {value:'เบาท์',   label:'เบาท์ (Bulk)'},
   {value:'ถัง',     label:'ถัง'},
   {value:'ตัน',     label:'ตัน (1,000 กก.)'},
+  {value:'เลท',     label:'เลท (กรอกสูตร เช่น 50x48)'},
 ];
+// [V19-1] หน่วยที่น้ำหนักต่อหน่วย "คงที่" — กรอกแค่จำนวน ระบบคูณเป็น กก. ให้เอง ไม่ต้องกรอก กก./หน่วย
+// ค่าใน map นี้คือแหล่งความจริงที่เดียว ทั้งการคำนวณ การแสดงผล และการตรวจก่อนบันทึก
+const _FIXED_WPU      = {'bigbag': 1000, '500 กก.': 500};
+const _FIXED_WPU_NOTE = {'bigbag': '≈ 1,000 กก./ใบ (ค่ามาตรฐาน)', '500 กก.': '= 500 กก./ถุง (ค่าคงที่)'};
+// ชื่อหน่วยที่บอกน้ำหนักอยู่ในตัวเองแล้ว — เวลาแสดงผลไม่ต้องต่อท้ายด้วย "× 500 กก." ซ้ำอีก
+// (ไม่งั้นได้ "10 500 กก. × 500 กก." ซึ่งอ่านแล้วสับสนว่าจำนวนคือ 10 หรือ 10,500)
+const _UNIT_SELF_WEIGHT = {'500 กก.': true};
+
+// ===== [V20-1] หน่วย "เลท" =====
+// หน้างานนับเป็นเลท แต่แต่ละเลทไม่เท่ากัน จึงให้กรอกสูตรของเลทนั้นเอง เช่น 50x48
+// = 50 กก./กระสอบ × 48 กระสอบ = 2,400 กก./เลท  แล้วเก็บ 2,400 ลง kgPerUnit ของแถวนั้น
+// (convertToKg เช็ค overrideWpu ก่อน wpuMap อยู่แล้ว เลยคำนวณ/แสดงผล/ประวัติ ใช้ทางเดิมได้ทั้งหมด)
+const _LOT_UNIT = 'เลท';
+function _parseLotFormula(txt){
+  // รับได้ทั้ง 50x48 / 50X48 / 50×48 / 50*48 / "50 x 48" / มีลูกน้ำ / หรือเลขเดี่ยว = กก./เลท ตรง ๆ
+  const t = String(txt == null ? '' : txt).trim().replace(/[,\s]/g, '').replace(/[xX×*]/g, 'x');
+  if(!t) return null;
+  const m = t.match(/^(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)$/);
+  if(m){
+    const a = Number(m[1]), b = Number(m[2]);
+    if(!(a > 0) || !(b > 0)) return null;
+    return {kgPerBag: a, bagsPerLot: b, kgPerLot: r2(a * b)};
+  }
+  const n = Number(t);
+  if(!isNaN(n) && n > 0) return {kgPerBag: null, bagsPerLot: null, kgPerLot: r2(n)};
+  return null;
+}
+function _lotLabel(f){
+  return f.kgPerBag ? ('เลท ' + f.kgPerBag + '×' + f.bagsPerLot) : ('เลท ' + f.kgPerLot + ' กก.');
+}
+// หมายเหตุที่จะเขียนลงชีต — แนบสูตรไว้ด้วยเสมอ ไม่งั้นย้อนดูทีหลังจะไม่รู้ว่าเลทนั้นคิดจากอะไร
+function _seEntryNote(s){
+  if(!s || s.unit !== _LOT_UNIT) return s && s.note ? s.note : '';
+  const f = _parseLotFormula(s.lotF);
+  const lab = f ? _lotLabel(f) : '';
+  if(!lab) return s.note || '';
+  return s.note ? (s.note + ' · ' + lab) : lab;
+}
+// เศษของเลทถูกแตกเป็น "อีกแถว" ตอนบันทึก โดยใช้หน่วยกระสอบ/กก. ที่มีอยู่แล้ว
+// จึงไม่ต้องเพิ่มคอลัมน์ในชีตหรือแก้ Code.gs เลย และยอด กก. รวมยังถูกต้อง
+function _lotRemainderRow(s){
+  if(!s || s.unit !== _LOT_UNIT) return null;
+  const rem = toNum(s.lotRem);
+  if(!(rem > 0)) return null;
+  const f = _parseLotFormula(s.lotF);
+  if(!f) return null;
+  const isBag = (s.lotRemU || 'bag') === 'bag';
+  if(isBag && !f.kgPerBag) return null;   // สูตรเลขเดี่ยวไม่รู้ กก./กระสอบ (กันไว้แล้วตอน validate)
+  return {
+    location: s.location || '', loc: s.loc || '',
+    qty: rem, unit: isBag ? 'กระสอบ' : 'กก.',
+    kgPerUnit: isBag ? String(f.kgPerBag) : '',
+    note: 'เศษของ ' + _lotLabel(f) + (s.note ? ' · ' + s.note : ''),
+    _lotRemOf: true,
+  };
+}
+
 function _unitOptionsHtml(selected){
   const sel = selected || '';
   // [Fix 2.4] เช่นเดียวกับ location — หน่วยอย่าง 'ton'/'bag' ที่ convertToKg ยังรองรับอยู่
@@ -3411,7 +3471,8 @@ function getWeightPerUnit(no){
 // [FIX-A4] น้ำหนักต่อหน่วยที่ "ใช้จริง" ในการคำนวณของแถวนั้น (ใช้โชว์ในตารางประวัติ)
 function _rowWpu(e){
   if(e.kgPerUnit && toNum(e.kgPerUnit) > 0) return toNum(e.kgPerUnit);
-  if(e.unit === 'bigbag' || e.unit === 'ตัน' || e.unit === 'ton') return 1000;
+  if(_FIXED_WPU[e.unit]) return _FIXED_WPU[e.unit];   // [V19-1] bigbag / 500 กก.
+  if(e.unit === 'ตัน' || e.unit === 'ton') return 1000;
   if(e.unit === 'กก.' || e.unit === 'kg') return null;   // 1 กก. ต่อ กก. ไม่ต้องโชว์
   if(e.unit === 'กระสอบ' || e.unit === 'bag') return getWeightPerUnit(e.no);
   return null;
@@ -3444,9 +3505,9 @@ function convertToKg(qty, unit, no, overrideWpu){
     'bag':     getWeightPerUnit(no),
     'ถัง':     null,
     'เบาท์':   null,
-    'bigbag':  1000,
     'ตัน':     1000,
     'ton':     1000,
+    ..._FIXED_WPU,   // [V19-1] bigbag: 1000, '500 กก.': 500
   };
   const wpu = wpuMap[unit] !== undefined ? wpuMap[unit] : getWeightPerUnit(no);
   if(!wpu) return null;
@@ -3463,14 +3524,16 @@ function formatQty(qty, unit, no, overrideWpu){
   const kg = convertToKg(qty, unit, no, overrideWpu);
   if(kg !== null){
     // หา wpu
-    const wpuMap = {'ตัน':1000,'ton':1000,'bigbag':1000};
+    const wpuMap = {'ตัน':1000,'ton':1000, ..._FIXED_WPU};   // [V19-1]
     let wpu = (overrideWpu && toNum(overrideWpu) > 0) ? toNum(overrideWpu) : wpuMap[unit];
     if(!wpu){
       const item = db.find(r => r.no === no);
       wpu = item && item.col2 ? toNum(item.col2) : null;
     }
     if(wpu){
-      return `${qty.toLocaleString()} ${u} × ${wpu} กก. = <span style="color:#1a5276;font-weight:700">${kg.toLocaleString()} กก.</span>`;
+      return _UNIT_SELF_WEIGHT[unit]   // [V19-1] เช่น "10 × 500 กก. = 5,000 กก."
+        ? `${qty.toLocaleString()} × ${u} = <span style="color:#1a5276;font-weight:700">${kg.toLocaleString()} กก.</span>`
+        : `${qty.toLocaleString()} ${u} × ${wpu} กก. = <span style="color:#1a5276;font-weight:700">${kg.toLocaleString()} กก.</span>`;
     }
     return `${qty.toLocaleString()} ${u} = <span style="color:#1a5276;font-weight:700">${kg.toLocaleString()} กก.</span>`;
   }
@@ -3825,12 +3888,56 @@ function updateSE(itemId, rowIdx, field, val){
 // [Fix V9-7] หน่วย "ถัง" และ "เบาท์" เดิม convertToKg คืน null ตายตัว และหน้าจอไม่มีช่องให้กรอก
 // น้ำหนักต่อหน่วยเลย ยอดของหน่วยเหล่านี้จึงถูกตัดออกจากทุกผลรวมตลอดไป (ขึ้นแค่ ⚠️ ให้ดู)
 // ความจริง convertToKg รองรับ overrideWpu อยู่แล้ว (เช็คก่อน wpuMap) แค่เปิดช่องให้กรอกก็ใช้ได้ทันที
-const _WPU_UNITS = {'กระสอบ':'กก./กระสอบ', 'ถัง':'กก./ถัง', 'เบาท์':'กก./เบาท์'};
+// [V20-1] เพิ่ม 'เลท' ไว้ด้วย เพื่อให้หน้า "แก้ไขรายการประจำวัน" มีช่องกรอก กก./เลท ตรง ๆ
+// (หน้าอัปเดตสต็อกไม่ใช้ทางนี้ เพราะมีกล่องกรอกสูตรของตัวเองที่เช็คก่อนแล้ว)
+const _WPU_UNITS = {'กระสอบ':'กก./กระสอบ', 'ถัง':'กก./ถัง', 'เบาท์':'กก./เบาท์', 'เลท':'กก./เลท'};
+// [V20-1] กล่องกรอกสูตรเลท + เศษ — วางในช่อง se_extra ที่เดิมใช้โชว์ กก./หน่วย
+// ตั้งใจไม่ re-render กล่องนี้ตอนพิมพ์ (จะทำให้ช่องหลุดโฟกัส) อัปเดตแค่ข้อความ hint กับบรรทัดยอดรวม
+function _lotBoxHtml(itemId, i, s){
+  const f   = _parseLotFormula(s.lotF);
+  const bad = String(s.lotF || '').trim() !== '' && !f;
+  const hint = f ? ('= ' + f.kgPerLot.toLocaleString() + ' กก./เลท') : (bad ? 'สูตรอ่านไม่ออก' : 'เช่น 50x48');
+  const remU = s.lotRemU || 'bag';
+  const inp  = 'padding:4px 7px;border:1px solid #cfe0f2;border-radius:4px;font-size:12px;font-family:inherit';
+  return '<span style="display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--tint);border:1px solid #cfe0f2;border-radius:6px;padding:5px 10px">'
+    + '<label style="font-size:11px;color:var(--ink-2);display:flex;align-items:center;gap:5px">สูตร/เลท:'
+    + '<input value="' + escHtml(s.lotF || '') + '" placeholder="50x48" title="กก./กระสอบ × จำนวนกระสอบต่อเลท เช่น 50x48 — หรือใส่เลขเดี่ยวเป็น กก./เลท"'
+    + ' style="width:86px;' + inp + (bad ? ';border-color:#e8b4b4;background:#fdf4f4' : '') + '"'
+    + ' oninput="updateSE(' + itemId + ',' + i + ',\'lotF\',this.value);_seRefreshLot(' + itemId + ',' + i + ')"></label>'
+    + '<span id="se_lothint_' + itemId + '_' + i + '" style="font-size:11px;color:' + (bad ? 'var(--red)' : 'var(--ink-3)') + '">' + escHtml(hint) + '</span>'
+    + '<label style="font-size:11px;color:var(--ink-2);display:flex;align-items:center;gap:5px">เศษ:'
+    + '<input type="number" min="0" step="any" value="' + escHtml(numAttr(s.lotRem)) + '" placeholder="0" style="width:64px;' + inp + '"'
+    + ' oninput="updateSE(' + itemId + ',' + i + ',\'lotRem\',this.value);_seRefreshLot(' + itemId + ',' + i + ')"></label>'
+    + '<select style="' + inp + '" onchange="updateSE(' + itemId + ',' + i + ',\'lotRemU\',this.value);_seRefreshLot(' + itemId + ',' + i + ')">'
+    + '<option value="bag"' + (remU === 'bag' ? ' selected' : '') + '>กระสอบ</option>'
+    + '<option value="kg"'  + (remU === 'kg'  ? ' selected' : '') + '>กก.</option>'
+    + '</select></span>';
+}
+function _seRefreshLot(itemId, i){
+  const s = (window._seStocks[itemId] || [])[i];
+  if(!s) return;
+  const f = _parseLotFormula(s.lotF);
+  // เก็บ กก./เลท ลง kgPerUnit ทันที ให้ทุกที่ที่คิดยอด (convertToKg / formatQty / ตอนบันทึก) ใช้ค่าเดียวกัน
+  s.kgPerUnit = f ? String(f.kgPerLot) : '';
+  const hintEl = document.getElementById('se_lothint_' + itemId + '_' + i);
+  if(hintEl){
+    const bad = String(s.lotF || '').trim() !== '' && !f;
+    hintEl.textContent  = f ? ('= ' + f.kgPerLot.toLocaleString() + ' กก./เลท') : (bad ? 'สูตรอ่านไม่ออก' : 'เช่น 50x48');
+    hintEl.style.color  = bad ? 'var(--red)' : 'var(--ink-3)';
+  }
+  _updateSERowPreview(itemId, i);
+}
+
 function _seRowUnitChanged(itemId, i, unit){
   updateSE(itemId, i, 'unit', unit);
   const extra = document.getElementById('se_extra_'+itemId+'_'+i);
   if(!extra) return;
   const item = db.find(x=>x.id===itemId);
+  if(unit === _LOT_UNIT){   // [V20-1] เลท — ใช้กล่องกรอกสูตรของตัวเอง ไม่ใช้ช่อง กก./หน่วย แบบอื่น
+    extra.innerHTML = _lotBoxHtml(itemId, i, window._seStocks[itemId][i]);
+    _seRefreshLot(itemId, i);
+    return;
+  }
   if(_WPU_UNITS[unit]){
     // เติมค่าเริ่มต้นจาก นน./หน่วย ของสินค้าให้เฉพาะกระสอบ (ถัง/เบาท์ ไม่มีค่ามาตรฐาน)
     // [Fix V11-1] normalize ด้วย numAttr() ก่อน ไม่งั้นค่าที่มีคอมม่า (1,200) จะโชว์เป็นช่องว่าง
@@ -3841,9 +3948,9 @@ function _seRowUnitChanged(itemId, i, unit){
       + '<input type="number" min="0" step="any" placeholder="เช่น 50" value="'+escHtml(String(prefill||''))+'" style="width:90px;padding:4px 7px;border:1px solid var(--rule);border-radius:4px;font-size:12px"'
       + ' oninput="updateSE('+itemId+','+i+',\'kgPerUnit\',this.value);_updateSERowPreview('+itemId+','+i+')"></label>'
       + (unit === 'กระสอบ' ? '' : '<span style="font-size:11px;color:#b9770e;margin-left:6px">ไม่กรอกก็บันทึกได้ แต่ยอดนี้จะไม่ถูกรวมเป็น กก.</span>');
-  } else if(unit === 'bigbag'){
-    updateSE(itemId, i, 'kgPerUnit', '1000');
-    extra.innerHTML = '<span style="font-size:11px;color:#888">≈ 1,000 กก./ใบ (ค่ามาตรฐาน)</span>';
+  } else if(_FIXED_WPU[unit]){   // [V19-1] bigbag / 500 กก. — น้ำหนักตายตัว ไม่ต้องกรอก
+    updateSE(itemId, i, 'kgPerUnit', String(_FIXED_WPU[unit]));
+    extra.innerHTML = '<span style="font-size:11px;color:#888">'+escHtml(_FIXED_WPU_NOTE[unit])+'</span>';
   } else {
     updateSE(itemId, i, 'kgPerUnit', '');
     extra.innerHTML = '';
@@ -3857,6 +3964,32 @@ function _updateSERowPreview(itemId, i){
   if(!s || !preview) return;
   const qty = toNum(s.qty);
   if(!qty || !s.unit){ preview.innerHTML=''; return; }
+  // [V20-1] หน่วยเลท: โชว์ที่มาของตัวเลขให้ครบ จำนวนเลท × สูตร + เศษ = รวม
+  if(s.unit === _LOT_UNIT){
+    const f = _parseLotFormula(s.lotF);
+    if(!f){
+      preview.innerHTML = '<span style="color:var(--red)">กรอกสูตรของเลทก่อน เช่น 50x48</span>';
+      return;
+    }
+    const lotKg = r2(qty * f.kgPerLot);
+    const rem   = toNum(s.lotRem);
+    const isBag = (s.lotRemU || 'bag') === 'bag';
+    let txt = qty.toLocaleString() + ' เลท × ' + f.kgPerLot.toLocaleString() + ' กก. = <b style="color:#1a5276">' + lotKg.toLocaleString() + ' กก.</b>';
+    let total = lotKg;
+    if(rem > 0){
+      if(isBag && !f.kgPerBag){
+        txt += ' <span style="color:var(--red)">+ เศษ ' + rem.toLocaleString() + ' กระสอบ — สูตรไม่ได้บอก กก./กระสอบ เลยคิดเป็น กก. ไม่ได้</span>';
+      } else {
+        const remKg = r2(isBag ? rem * f.kgPerBag : rem);
+        total = r2(total + remKg);
+        txt += ' + เศษ ' + rem.toLocaleString() + (isBag ? (' กระสอบ × ' + f.kgPerBag + ' กก.') : ' กก.')
+             + ' = <b style="color:#1a5276">' + remKg.toLocaleString() + ' กก.</b>'
+             + ' → รวม <b style="color:#1a5276">' + total.toLocaleString() + ' กก.</b>';
+      }
+    }
+    preview.innerHTML = txt;
+    return;
+  }
   const item = db.find(x=>x.id===itemId);
   const no = item ? item.no : '';
   const kg = convertToKg(qty, s.unit, no, s.kgPerUnit);
@@ -3864,13 +3997,14 @@ function _updateSERowPreview(itemId, i){
 }
 
 function _seExtraHtml(itemId, i, s){
+  if(s.unit === _LOT_UNIT) return _lotBoxHtml(itemId, i, s);   // [V20-1]
   if(_WPU_UNITS[s.unit]){   // [Fix V9-7] กระสอบ / ถัง / เบาท์
     return '<label style="font-size:11px;color:#888;display:flex;align-items:center;gap:5px">'+escHtml(_WPU_UNITS[s.unit])+':'
       + '<input type="number" min="0" step="any" placeholder="เช่น 50" value="'+escHtml(numAttr(s.kgPerUnit))+'" style="width:90px;padding:4px 7px;border:1px solid var(--rule);border-radius:4px;font-size:12px"'   // [Fix V11-1]
       + ' oninput="updateSE('+itemId+','+i+',\'kgPerUnit\',this.value);_updateSERowPreview('+itemId+','+i+')"></label>';
   }
-  if(s.unit === 'bigbag'){
-    return '<span style="font-size:11px;color:#888">≈ 1,000 กก./ใบ (ค่ามาตรฐาน)</span>';
+  if(_FIXED_WPU[s.unit]){   // [V19-1]
+    return '<span style="font-size:11px;color:#888">'+escHtml(_FIXED_WPU_NOTE[s.unit])+'</span>';
   }
   return '';
 }
@@ -4121,9 +4255,9 @@ async function saveStockItem(itemId, btnEl){
   showToast('⏳ กำลังบันทึก ' + (r.desc||r.no) + ' ...');
 
   try {
-    const newEntries = (window._seStocks[itemId]||[]).filter(s => s.qty && toNum(s.qty) > 0);
+    const _baseRows = (window._seStocks[itemId]||[]).filter(s => s.qty && toNum(s.qty) > 0);
     // validate qty
-    for(const s of newEntries){
+    for(const s of _baseRows){
       const qty = toNum(s.qty);
       if(isNaN(qty) || qty <= 0){ showToast('จำนวนต้องเป็นตัวเลขที่มากกว่า 0', 'error'); return; }
       if(qty > 999999){ showToast('จำนวนดูเหมือนผิดปกติ (' + qty.toLocaleString() + ') กรุณาตรวจสอบ', 'error'); return; }
@@ -4134,9 +4268,32 @@ async function saveStockItem(itemId, btnEl){
         showToast('กรุณากรอกน้ำหนักต่อกระสอบ (กก./กระสอบ)', 'error');
         return;
       }
-      if(s.unit === 'bigbag' && (!s.kgPerUnit || toNum(s.kgPerUnit) <= 0)){
-        s.kgPerUnit = '1000'; // ค่ามาตรฐาน เผื่อไม่ได้ตั้งไว้
+      if(_FIXED_WPU[s.unit] && (!s.kgPerUnit || toNum(s.kgPerUnit) <= 0)){
+        s.kgPerUnit = String(_FIXED_WPU[s.unit]); // [V19-1] ค่ามาตรฐาน เผื่อไม่ได้ตั้งไว้
       }
+      // [V20-1] หน่วยเลท: ต้องมีสูตรที่อ่านออก ไม่งั้นยอด กก. จะกลายเป็นศูนย์เงียบ ๆ
+      if(s.unit === _LOT_UNIT){
+        const f = _parseLotFormula(s.lotF);
+        if(!f){
+          showToast('กรุณากรอกสูตรของเลท เช่น 50x48 (50 กก./กระสอบ × 48 กระสอบ)', 'error');
+          return;
+        }
+        s.kgPerUnit = String(f.kgPerLot);
+        if(toNum(s.lotRem) > 0 && (s.lotRemU || 'bag') === 'bag' && !f.kgPerBag){
+          showToast('เศษกรอกเป็นกระสอบ แต่สูตรเป็นเลขเดี่ยวจึงไม่รู้ กก./กระสอบ — ' +
+                    'พิมพ์สูตรแบบ 50x48 หรือเปลี่ยนหน่วยเศษเป็น กก.', 'error');
+          return;
+        }
+      }
+    }
+
+    // [V20-1] แตกเศษของแถวหน่วยเลทออกเป็นอีกแถว (หน่วยกระสอบ/กก.) ต่อท้ายแถวหลักของมันเอง
+    // แถวหลักต้องอยู่ index 0 เหมือนเดิม เพราะธง snap ของโหมด "นับใหม่" และรูปหลักฐานผูกกับแถวแรก
+    const newEntries = [];
+    for(const s of _baseRows){
+      newEntries.push(s);
+      const remRow = _lotRemainderRow(s);
+      if(remRow) newEntries.push(remRow);
     }
     // [Fix V10-11] เดิมแถวที่กรอกจำนวนติดลบ (เช่น -5) ถูกตัวกรอง qty > 0 ด้านบนตัดทิ้งเงียบ ๆ
     // แล้วขึ้นข้อความ "กรุณากรอกจำนวนก่อนบันทึก" ทั้งที่ผู้ใช้กรอกจำนวนไปแล้ว — ชวนสับสนมาก
@@ -4227,7 +4384,7 @@ async function saveStockItem(itemId, btnEl){
           // [Fix 1.2] เฉพาะแถวแรกของชุดที่ถูกทำเครื่องหมายว่า "นับใหม่"
           ...(mode === 'replace' && i === 0 ? {snap:true} : {}),
           // [Fix 2.20] แนบรูปกับแถวแรกแถวเดียว และ copy array กันไม่ให้ทุก entry ชี้ตัวเดียวกัน
-          note: s.note||'', images: (i === 0 ? [...itemImgs] : [])
+          note: _seEntryNote(s), images: (i === 0 ? [...itemImgs] : [])   // [V20-1] แนบสูตรเลทไว้ในหมายเหตุ
         });
       });
       _clearStockCache();
@@ -4730,9 +4887,10 @@ function renderDaily(container){
                 return any ? t : null;
               })();
               if(kg !== null){
-                const wpuMap = {'ตัน':1000,'ton':1000,'bigbag':1000};
+                const wpuMap = {'ตัน':1000,'ton':1000, ..._FIXED_WPU};   // [V19-1]
                 let wpu = (groupWpu && toNum(groupWpu) > 0) ? toNum(groupWpu) : wpuMap[s.unit];
                 if(!wpu){ const item = db.find(r=>r.no===s.no); wpu = item&&item.col2?toNum(item.col2):null; }
+                if(_UNIT_SELF_WEIGHT[s.unit]) return `${s.total.toLocaleString()} × ${escHtml(s.unit)} = ${kg.toLocaleString()} กก.`;   // [V19-1]
                 return (wpu && _wpus.length <= 1)
                   ? `${s.total.toLocaleString()} ${escHtml(s.unit)} × ${wpu} = ${kg.toLocaleString()} กก.`
                   : `${s.total.toLocaleString()} ${escHtml(s.unit)} = ${kg.toLocaleString()} กก.`;
@@ -5518,7 +5676,7 @@ function editDailyEntry(date, entryIdx){
         <select id="edit_unit" onchange="_editEntryUnitChanged(this.value)">${_unitOptionsHtml(entry.unit||'')}</select>
       </div>
     </div>
-    <div class="form-group" id="edit_wpu_wrap" style="display:${(entry.unit==='กระสอบ'||entry.unit==='bigbag')?'flex':'none'}">
+    <div class="form-group" id="edit_wpu_wrap" style="display:${(entry.unit==='กระสอบ'||_FIXED_WPU[entry.unit])?'flex':'none'}">
       <div id="edit_wpu_extra"></div>
     </div>
     <div id="edit_kg_preview" style="font-size:12px;margin:-6px 0 12px 2px"></div>
@@ -5559,10 +5717,11 @@ function _editEntryUnitChanged(unit, isInitial){
     extra.innerHTML = '<label style="font-size:12px;color:#7a8fa6;display:flex;align-items:center;gap:6px">'+escHtml(_WPU_UNITS[unit])+':'
       + '<input type="number" min="0" step="any" placeholder="เช่น 50" id="edit_wpu" value="'+escHtml(numAttr(prefill))+'" style="width:100px;padding:6px 9px;border:1px solid var(--rule);border-radius:4px;font-size:13px"'   // [Fix V11-1]
       + ' oninput="window._editEntryKgPerUnit=this.value;_updateEditEntryPreview()"></label>';
-  } else if(unit === 'bigbag'){
+  } else if(_FIXED_WPU[unit]){   // [V19-1] bigbag / 500 กก.
     wrap.style.display = 'flex';
-    if(!window._editEntryKgPerUnit || toNum(window._editEntryKgPerUnit) <= 0) window._editEntryKgPerUnit = '1000';
-    extra.innerHTML = '<span style="font-size:12px;color:#7a8fa6">≈ 1,000 กก./ใบ (ค่ามาตรฐาน)</span>';
+    // หน่วยน้ำหนักคงที่: เขียนทับเสมอ ไม่งั้นค่าเก่าของหน่วยก่อนหน้า (เช่น 1000 ของ bigbag) จะค้างมาคูณผิด
+    window._editEntryKgPerUnit = String(_FIXED_WPU[unit]);
+    extra.innerHTML = '<span style="font-size:12px;color:#7a8fa6">'+escHtml(_FIXED_WPU_NOTE[unit])+'</span>';
   } else {
     wrap.style.display = 'none';
     extra.innerHTML = '';
@@ -5678,8 +5837,8 @@ async function saveEditDailyEntry(date, realIdx){
     if(loader) loader.style.display = 'none';
     return;
   }
-  if(editUnit === 'bigbag' && (!window._editEntryKgPerUnit || toNum(window._editEntryKgPerUnit) <= 0)){
-    window._editEntryKgPerUnit = '1000';
+  if(_FIXED_WPU[editUnit] && (!window._editEntryKgPerUnit || toNum(window._editEntryKgPerUnit) <= 0)){
+    window._editEntryKgPerUnit = String(_FIXED_WPU[editUnit]);   // [V19-1]
   }
 
   // [Fix R-4] เดิมหน้า "แก้ไขรายการประจำวัน" ไม่บังคับเลือก Location (ต่างจากหน้าเพิ่มสต็อกใหม่ที่บังคับ — [H-5])
@@ -5728,7 +5887,7 @@ async function saveEditDailyEntry(date, realIdx){
       qty:      editQty,
       unit:     editUnit,
       // [Fix V9-7] เดิมทิ้ง kgPerUnit ของหน่วย ถัง/เบาท์ ทำให้ค่าที่เพิ่งกรอกหายทันทีที่กดบันทึก
-      kgPerUnit: (_WPU_UNITS[editUnit] || editUnit === 'bigbag') ? (window._editEntryKgPerUnit||'') : '',
+      kgPerUnit: (_WPU_UNITS[editUnit] || _FIXED_WPU[editUnit]) ? (window._editEntryKgPerUnit||'') : '',   // [V19-1]
       note:     document.getElementById('edit_note').value.trim(),
       images:   window._editEntryImgs || [],
     };
