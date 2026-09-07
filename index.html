@@ -1073,7 +1073,7 @@ tbody tr:hover {
 // GitHub Pages เก็บแคชไฟล์ HTML ไว้ที่ CDN ราว 10 นาที และเบราว์เซอร์เก็บซ้ำอีกชั้น
 // หลังอัปโหลดไฟล์ใหม่จึงมักยังเห็นของเก่าอยู่ — เดิมไม่มีทางรู้เลยว่าเห็นเวอร์ชันไหน
 // ถ้าเลขที่แสดงไม่ตรงกับไฟล์ที่เพิ่งอัปโหลด ให้กด Ctrl+Shift+R (หรือ Cmd+Shift+R บน Mac)
-const APP_VERSION = 'v20';
+const APP_VERSION = 'v21';
 const APP_BUILD   = '29 ส.ค. 2569';
 (function _paintVersion(){
   const set = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
@@ -4353,11 +4353,25 @@ async function saveStockItem(itemId, btnEl){
 
     // [Fix R-2] ครอบทั้ง merge + แก้ entries + ส่ง saveDaily ด้วยคิวกลาง (withDayWriteLock)
     // กันชนกับการบันทึกสินค้าอื่น/undo/ลบ/retry ที่อาจกำลังเขียนวันเดียวกันอยู่พร้อมกัน
+    // ===== [PERF-2] เส้นทางเร็วสำหรับการ "บวกเพิ่ม" ซึ่งเป็นงานหลักหน้างาน =====
+    // ส่งขึ้นชีตแค่แถวใหม่ผ่าน action appendDaily แทนการส่งทั้งวันด้วย saveDaily
+    // และเพราะการต่อท้ายไม่มีทางทับข้อมูลของเพื่อนร่วมงาน จึงไม่ต้อง _mergeServerDay ก่อน
+    // = ตัดการยิงเน็ตจาก 2 รอบเหลือ 1 รอบ และ payload เหลือแค่แถวที่เพิ่งกรอก
+    //
+    // เงื่อนไขสำคัญ 2 ข้อ ถ้าไม่เข้าเงื่อนไขจะกลับไปใช้ทางเดิมทั้งหมด:
+    //   1. ต้องเป็นโหมด add — โหมด replace ("นับสต็อกใหม่") ต้องเขียนทับทั้งวันตามเดิม
+    //   2. วันนี้ต้องไม่มีของค้างส่ง — ถ้ามี ต้องใช้ saveDaily ทั้งวันเพื่อเคลียร์ของค้างให้ครบ
+    //      (ถ้าดันไปต่อท้ายแล้ว _clearPending ของค้างจะถูกทิ้งไปเงียบ ๆ ทั้งที่ยังไม่เคยขึ้นชีต)
+    const _useAppend = (mode !== 'replace') && !_isDayDirty(dateStr);
     let syncOk = true, syncErrMsg = '';
     await withDayWriteLock(async () => {
       // [FIX-A12] ดึงของวันนี้จากชีตมารวมก่อน กันทับข้อมูลที่คนอื่นเพิ่งบันทึกไป
-      const _merged = await _mergeServerDay(todayRecord);
-      if(_merged.added) showToast('ℹ️ พบข้อมูลใหม่จากเพื่อนร่วมงาน ' + _merged.added + ' แถว — รวมให้แล้ว');
+      // ทางต่อท้ายไม่ต้องทำขั้นนี้ เพราะไม่มีการลบ/เขียนทับแถวเดิมเลย
+      let _merged = {ok: true, added: 0};
+      if(!_useAppend){
+        _merged = await _mergeServerDay(todayRecord);
+        if(_merged.added) showToast('ℹ️ พบข้อมูลใหม่จากเพื่อนร่วมงาน ' + _merged.added + ' แถว — รวมให้แล้ว');
+      }
 
       if(mode === 'replace'){
         // [Fix 1.2] เดิมลบเฉพาะ entry ของ "วันนี้" แต่ยอดสต็อกคำนวณจากการบวกสะสม "ทุกวัน"
@@ -4375,8 +4389,9 @@ async function saveStockItem(itemId, btnEl){
       }
 
       const itemImgs = window._seImgs ? (window._seImgs[itemId]||[]) : [];
+      const _pushed = [];   // [PERF-2] เก็บแถวที่เพิ่งสร้างไว้ ส่งขึ้นชีตแค่ชุดนี้
       newEntries.forEach((s, i) => {
-        todayRecord.entries.push({
+        const _row = {
           no: r.no, desc: r.desc, code: r.code,
           location: s.location||'', storage: s.loc||'',
           qty: toNum(s.qty), unit: s.unit||'',
@@ -4385,7 +4400,9 @@ async function saveStockItem(itemId, btnEl){
           ...(mode === 'replace' && i === 0 ? {snap:true} : {}),
           // [Fix 2.20] แนบรูปกับแถวแรกแถวเดียว และ copy array กันไม่ให้ทุก entry ชี้ตัวเดียวกัน
           note: _seEntryNote(s), images: (i === 0 ? [...itemImgs] : [])   // [V20-1] แนบสูตรเลทไว้ในหมายเหตุ
-        });
+        };
+        todayRecord.entries.push(_row);
+        _pushed.push(_row);
       });
       _clearStockCache();
       _clearDailyIndex();
@@ -4398,7 +4415,16 @@ async function saveStockItem(itemId, btnEl){
         return;
       }
       try {
-        const payload = {
+        // [PERF-2] ทางต่อท้ายส่งแค่แถวใหม่ และใส่ชื่อคนที่บันทึกเฉพาะแถวของตัวเอง
+        // (saveDaily เขียนชื่อเดียวกันทับทุกแถวของวันนั้น เพราะมันเขียนใหม่ทั้งวัน)
+        const payload = _useAppend ? {
+          action: 'appendDaily',
+          token: API_TOKEN,
+          date: dateStr,
+          date_th: dateTh,
+          recorded_by: _who,
+          entries: _pushed,
+        } : {
           action: 'saveDaily',
           token: API_TOKEN,
           date: dateStr,
@@ -4418,7 +4444,14 @@ async function saveStockItem(itemId, btnEl){
         syncOk = false; syncErrMsg = e.message;
       }
     });
-    if(syncOk) _clearPending(dateStr); else _markPending(dateStr);
+    // [PERF-2] ทางต่อท้ายทำงานเฉพาะเมื่อวันนี้ไม่มีของค้างอยู่แล้ว สำเร็จก็ไม่มีอะไรต้องเคลียร์
+    // ถ้าล้มเหลวต้องเข้าคิวตามเดิม แล้วครั้งถัดไป _isDayDirty จะเป็นจริง
+    // ทำให้กลับไปใช้ saveDaily ทั้งวันเอง ซึ่งจะเคลียร์ของค้างไปพร้อมกันในครั้งเดียว
+    if(syncOk){
+      if(!_useAppend) _clearPending(dateStr);
+    } else {
+      _markPending(dateStr);
+    }
 
     // reset input (ทำหลังจาก sync เสร็จแล้วเท่านั้น กันกดซ้ำระหว่างรอ)
     window._seStocks[itemId] = [_seNewRow()];   // [V18-1] คง Location ประจำวันไว้ให้แถวถัดไป
