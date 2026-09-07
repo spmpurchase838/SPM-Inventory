@@ -1073,7 +1073,7 @@ tbody tr:hover {
 // GitHub Pages เก็บแคชไฟล์ HTML ไว้ที่ CDN ราว 10 นาที และเบราว์เซอร์เก็บซ้ำอีกชั้น
 // หลังอัปโหลดไฟล์ใหม่จึงมักยังเห็นของเก่าอยู่ — เดิมไม่มีทางรู้เลยว่าเห็นเวอร์ชันไหน
 // ถ้าเลขที่แสดงไม่ตรงกับไฟล์ที่เพิ่งอัปโหลด ให้กด Ctrl+Shift+R (หรือ Cmd+Shift+R บน Mac)
-const APP_VERSION = 'v21';
+const APP_VERSION = 'v22';
 const APP_BUILD   = '29 ส.ค. 2569';
 (function _paintVersion(){
   const set = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
@@ -1687,6 +1687,67 @@ setInterval(() => {
   }
   retryPending(true);
 }, 90000);
+
+// ===== [PERF-3] คอยดูว่ามีเพื่อนร่วมงานบันทึกของวันนี้เพิ่มไหม =====
+// ตั้งแต่ [PERF-2] ทางบวกเพิ่มใช้ appendDaily ซึ่งไม่ดึงข้อมูลวันนั้นมารวมก่อนบันทึกแล้ว
+// (จงใจ เพราะการต่อท้ายไม่มีทางทับของใคร และนั่นคือที่มาของความเร็วที่ได้)
+// ผลข้างเคียงคือหน้าจอในเครื่องอาจไม่เห็นแถวที่คนอื่นเพิ่งบันทึกจนกว่าจะกด 🔄
+// ตัวนี้ถามชีตแค่ "วันนี้มีกี่แถว" ซึ่งอ่านแค่คอลัมน์วันที่ ไม่แตะรูป base64 เลย
+// ต่างจากที่ถือไว้ในเครื่องเมื่อไหร่ ค่อยดึงของจริงมารวมทีเดียว
+let _peekBusy = false;
+async function _peekTodayChanges(){
+  if(_peekBusy) return;
+  if(!currentUser || _secureLocked) return;              // ยังไม่ผ่านหน้า login
+  if(!navigator.onLine) return;
+  if(document.hidden) return;                            // แท็บไม่ได้เปิดอยู่ ไม่ต้องกิน quota
+  const date = localDateStr();
+  if(_isDayDirty(date)) return;                          // มีของค้างส่ง ปล่อยให้ retryPending จัดการ
+  // กำลังบันทึกอยู่ห้ามแทรก ไม่งั้นจะไปชนกับ withDayWriteLock ของการบันทึก
+  if(window._seSaving && Object.keys(window._seSaving).some(k => window._seSaving[k])) return;
+  _peekBusy = true;
+  try {
+    const res = await fetchTO(GS_URL + '?action=getDailyCount&token=' + API_TOKEN +
+                              '&date=' + encodeURIComponent(date), {}, 10000);
+    const j = await readJson(res);
+    if(!j || !j.ok || !j.data || typeof j.data.count !== 'number') return;
+    const _day   = MOCK_DAILY.find(d => d.date === date);
+    const _local = (_day && _day.entries) ? _day.entries.length : 0;
+    if(j.data.count === _local) return;                  // ตรงกันอยู่แล้ว ไม่ต้องทำอะไรต่อ
+
+    // ต่างกันจริงค่อยดึงของจริง — ทำในคิวเดียวกับการบันทึก กันเขียนชนกัน
+    await withDayWriteLock(async () => {
+      if(_isDayDirty(date)) return;                      // เผื่อมีการบันทึกแทรกเข้ามาระหว่างรอคิว
+      let day = MOCK_DAILY.find(d => d.date === date);
+      if(!day){
+        // วันนี้ยังไม่มีในเครื่องเลย แต่ชีตมีแล้ว (เพื่อนเริ่มก่อน) — สร้างที่ว่างไว้ให้ merge เติม
+        const _t = new Date();
+        const _m = 'มกราคม กุมภาพันธ์ มีนาคม เมษายน พฤษภาคม มิถุนายน กรกฎาคม สิงหาคม กันยายน ตุลาคม พฤศจิกายน ธันวาคม'.split(' ');
+        day = {date: date, date_th: _t.getDate()+' '+_m[_t.getMonth()]+' '+(_t.getFullYear()+543),
+               entries: [], recorded_by: ''};
+        MOCK_DAILY.push(day);
+        _clearDailyIndex();
+      }
+      const mg = await _mergeServerDay(day);
+      if(!mg.ok) return;
+      _clearStockCache(); _clearDailyIndex();
+      _saveDailyData();
+      if(mg.added) showToast('ℹ️ มีข้อมูลใหม่จากเพื่อนร่วมงาน ' + mg.added + ' แถว — รวมให้แล้ว');
+      _refreshAfterPeek();
+    });
+  } catch(e){
+    // เช็คไม่ได้ก็ไม่เป็นไร รอบหน้าค่อยลองใหม่ ห้ามขึ้น error รบกวนคนหน้างาน
+  } finally {
+    _peekBusy = false;
+  }
+}
+// วาดหน้าใหม่เฉพาะหน้าที่ปลอดภัย — หน้าอัปเดตสต็อกห้ามวาดใหม่เด็ดขาด
+// เพราะผู้ใช้อาจกำลังพิมพ์อยู่ การ re-render จะทำให้ช่องหลุดโฟกัสกลางคัน
+function _refreshAfterPeek(){
+  const page = window._currentPageName || '';
+  if(page === 'stockedit') return;
+  try { showPage(page || 'dashboard', false); } catch(e){}
+}
+setInterval(_peekTodayChanges, 60000);
 
 // fetch ที่มี timeout เสมอ (iOS เก่าไม่รองรับ AbortSignal.timeout จึงใช้ AbortController)
 const REQ_TIMEOUT = 25000;
