@@ -1073,8 +1073,8 @@ tbody tr:hover {
 // GitHub Pages เก็บแคชไฟล์ HTML ไว้ที่ CDN ราว 10 นาที และเบราว์เซอร์เก็บซ้ำอีกชั้น
 // หลังอัปโหลดไฟล์ใหม่จึงมักยังเห็นของเก่าอยู่ — เดิมไม่มีทางรู้เลยว่าเห็นเวอร์ชันไหน
 // ถ้าเลขที่แสดงไม่ตรงกับไฟล์ที่เพิ่งอัปโหลด ให้กด Ctrl+Shift+R (หรือ Cmd+Shift+R บน Mac)
-const APP_VERSION = 'v22';
-const APP_BUILD   = '29 ส.ค. 2569';
+const APP_VERSION = 'v26';
+const APP_BUILD   = '7 ก.ย. 2569';
 (function _paintVersion(){
   const set = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
   set('appVersion', APP_VERSION);
@@ -1846,8 +1846,12 @@ async function loadFromSheet(opts){
   try {
     // [Fix V8-SPEED-3] เดิมยิง getItems รอให้เสร็จ แล้วค่อยยิง getDaily ต่อเป็นทอด ๆ
     // เวลารวม = คำขอที่ 1 + คำขอที่ 2  ตอนนี้ยิงพร้อมกัน เวลารวม = ตัวที่ช้ากว่าตัวเดียว
-    const _pItems = fetchTO(GS_URL + '?action=getItems&token=' + API_TOKEN);
-    const _pDaily = fetchTO(GS_URL + '?action=getDaily&token=' + API_TOKEN);
+    // [PERF-5] ไม่ขอรูปสินค้า (pic/pic2 เป็น base64 รูปละไม่เกิน 40 KB × สินค้า 500+ ตัว)
+    // รูปถูกใช้แค่ในหน้ารายการทีละ 20 แถว และตอนเปิดดู/แก้ไขสินค้าตัวเดียว จึงดึงทีหลัง
+    const _pItems = fetchTO(GS_URL + '?action=getItems&light=1&token=' + API_TOKEN);
+    // [PERF-4] ไม่ขอรูปหลักฐานมาตอนเปิดแอป — ประวัติทั้งหมดพร้อมรูป base64 คือตัวถ่วงหลัก
+    // รูปถูกใช้แค่ตอนเปิดดูประวัติของวันนั้น จึงดึงทีหลังเฉพาะวันที่เปิดดู (ดู _ensureDayImages)
+    const _pDaily = fetchTO(GS_URL + '?action=getDaily&light=1&token=' + API_TOKEN);
     // กัน unhandled rejection ถ้าคำขอใดพังก่อนที่จะถึงคิว await ของตัวเอง
     _pItems.catch(()=>{}); _pDaily.catch(()=>{});
     const res = await _pItems;
@@ -1875,6 +1879,7 @@ async function loadFromSheet(opts){
       storage: _s(r['สถานที่จัดเก็บ']),
       image:   _s(r['pic']),
       image2:  _s(r['pic2']),
+      imgLight: !!r._imgLight,   // [PERF-5] true = ยังไม่ได้โหลดรูป (ไม่ใช่ "ไม่มีรูป")
       notes:   _s(r['หมายเหตุ']),
       stocks:  [],
     }));
@@ -2458,6 +2463,10 @@ function renderList(){
   if(currentPage>pages) currentPage=pages;
   const sorted = _applySortToFiltered(filtered);
   const slice = sorted.slice((currentPage-1)*PAGE_SIZE, currentPage*PAGE_SIZE);
+  // [PERF-5] ดึงรูปของเฉพาะแถวที่อยู่ในหน้านี้ แล้วค่อยวาดใหม่เมื่อได้รูปมา
+  _ensureItemImages(slice.map(r => r.no), () => {
+    if(document.getElementById('listTable')) renderList();
+  });
   const catLabel = _currentCatLabel();   // [Fix V9-2]
 
   const hasSearch = document.getElementById('searchInput');
@@ -2906,6 +2915,8 @@ async function saveNew(){
     'Description': newItem.desc,
     'pic': newItem.image,
     'pic2': newItem.image2,
+    '_picCleared':  true,   // [PERF-5] สินค้าใหม่ ไม่มีรูปเดิมให้รักษาอยู่แล้ว
+    '_pic2Cleared': true,
     'บรรจุ': newItem.pkg,
     'นน./หน่วย': newItem.col2,
     'เงื่อนไขการซื้อขาย': newItem.cond,
@@ -2997,7 +3008,18 @@ function _finishSaveNew(newItem, no, desc, code, prefix){
   window.scrollTo({top:0, behavior:'smooth'});
 }
 
-function showEditModal(id, expectNo){
+async function showEditModal(id, expectNo){
+  // [PERF-5] ต้องโหลดรูปของสินค้าตัวนี้ให้ครบก่อน
+  // ไม่งั้นช่อง f_image จะว่าง แล้วตอนกดบันทึก saveEditItem จะส่ง pic:'' ขึ้นไปทับรูปเดิมในชีต
+  {
+    const _r0 = _resolveItem(id, expectNo);
+    if(_r0 && _r0.imgLight && !_r0.image && !_r0.image2){
+      await _withImgWait('กำลังโหลดรูปสินค้า...', () => _ensureItemImages([_r0.no]));
+    }
+  }
+  return _showEditModalInner(id, expectNo);
+}
+function _showEditModalInner(id, expectNo){
   const r = _resolveItem(id, expectNo);
   if(!r){ _staleItemToast(); closeModal(); return; }
   // [Fix V10-1] จำรหัสและรุ่นของ db ไว้ ใช้ตรวจตอนกดบันทึก
@@ -3075,6 +3097,9 @@ async function saveEdit(id, expectNo){
       'Description': updated.desc,
       'pic': updated.image,
       'pic2': updated.image2,
+      // [PERF-5] บอก Apps Script ให้ชัดว่าค่าว่างนี้คือ "ผู้ใช้กดลบรูป" ไม่ใช่ "ยังไม่ได้โหลดรูป"
+      '_picCleared':  !!d.imgCleared,
+      '_pic2Cleared': !!d.imgCleared2,
       'บรรจุ': updated.pkg,
       'นน./หน่วย': updated.col2,
       'เงื่อนไขการซื้อขาย': updated.cond,
@@ -3250,6 +3275,10 @@ async function deleteItem(id, expectNo){
 function showDetail(id, expectNo){
   const r = _resolveItem(id, expectNo);   // [Fix V10-1]
   if(!r){ _staleItemToast(); return; }
+  // [PERF-5] ถ้ายังไม่ได้โหลดรูปของสินค้าตัวนี้ ดึงมาแล้วเปิดหน้ารายละเอียดใหม่ให้เห็นรูป
+  if(r.imgLight && !r.image && !r.image2){
+    _ensureItemImages([r.no], () => { try { showDetail(id, expectNo); } catch(e){} });
+  }
 
   // [Fix 1.3] เดิมรวมยอดเองโดยทิ้ง kgPerUnit ตอนนี้ใช้ getStockByNoAndLoc ตัวเดียวกับหน้าอื่น
   const accStocks = getStockByNoAndLoc(r.no).map(s => ({
@@ -4182,7 +4211,10 @@ function _restoreDailyMeta(day, map){
     if(meta.snap && !e.snap){ e.snap = true; restored++; }
     if(meta.kgPerUnit && !(toNum(e.kgPerUnit) > 0)){ e.kgPerUnit = meta.kgPerUnit; restored++; }
     if(meta.note && !e.note){ e.note = meta.note; restored++; }
-    if(meta.images && (!e.images || !e.images.length)){ e.images = meta.images; restored++; }
+    if(meta.images && (!e.images || !e.images.length)){
+      e.images = meta.images; restored++;
+      delete e.imgLight;   // [PERF-4] ได้รูปจากแคชในเครื่องแล้ว ไม่ต้องไปดึงจากชีตซ้ำ
+    }
   });
   return restored;
 }
@@ -4237,6 +4269,32 @@ async function _mergeServerDay(day){
       _restoreDailyMeta(day, _meta);
       _clearStockCache(); _clearDailyIndex();
       return {ok:true, added:_newCount, replaced:true};
+    }
+
+    // ===== [PERF-4b] คืนรูปให้แถวในเครื่องที่ยังไม่ได้โหลดรูป =====
+    // สาขานี้ (วันนั้นมีของค้างส่ง) จะ "คงแถวในเครื่องไว้" แล้วเติมแถวที่ขาดจากชีต
+    // ตั้งแต่โหลดประวัติแบบ light แถวในเครื่องมี images = [] + ธง imgLight
+    // ทุกเส้นทางที่เรียก saveDaily (เขียนทับทั้งวัน) จะ merge ก่อนเสมอ — จุดนี้จึงเป็น
+    // ที่เดียวที่ต้องคืนรูปให้ ครอบคลุมทั้ง retryPending / เปลี่ยนเลข No. / แก้ไข / ลบ / undo
+    // (ตาข่ายฝั่ง Apps Script ยังทำงานอยู่ แต่จับคู่ไม่ได้ถ้าผู้ใช้แก้ No./จำนวน/Location
+    //  เพราะลายเซ็นเปลี่ยน จึงต้องมีชั้นนี้ด้วย)
+    if((day.entries||[]).some(e => e && e.imgLight)){
+      const _imgPool = {};
+      srv.entries.forEach(e => {
+        if(!e || !e.images || !e.images.length) return;
+        const k = _entryCoreSig(_normEntry(Object.assign({}, e)));
+        (_imgPool[k] = _imgPool[k] || []).push(e.images);
+      });
+      day.entries.forEach(e => {
+        if(!e || !e.imgLight) return;
+        // แถวที่มีรูปในเครื่องอยู่แล้วไม่ต้องเติม แต่ต้องเคลียร์ธงด้วย
+        // ไม่งั้น _ensureDayImages จะเห็นธงค้างแล้วยิงขอรูปซ้ำทุกครั้งที่เปิดวันนั้น
+        if(!(e.images && e.images.length)){
+          const b = _imgPool[_entryCoreSig(e)];
+          if(b && b.length) e.images = b.shift();
+        }
+        delete e.imgLight;   // เช็คกับชีตแล้ว ไม่ว่าจะเจอรูปหรือไม่
+      });
     }
 
     const localCount = {}, localCore = {};
@@ -4833,6 +4891,147 @@ const _mobileFixObserver = new MutationObserver(_debounce(() => { _applyMobileFi
   }
 })();
 
+// ===== [PERF-5] ดึงรูปสินค้าเฉพาะตัวที่กำลังแสดงอยู่ =====
+// ขอเป็นชุดเดียว (หน้ารายการทีละ 20 แถว) ไม่ยิงทีละตัว ไม่งั้นจะกลายเป็น 20 คำขอ
+// ดึงแล้วจำไว้ใน db เลย ครั้งต่อไปที่กลับมาหน้าเดิมไม่ต้องดึงซ้ำ
+// ระหว่างรอโหลดรูปก่อนเปิดหน้าต่างแก้ไข ต้องมีอะไรขึ้นให้เห็น
+// ไม่งั้นผู้ใช้กด "แก้ไข" แล้วเงียบไปหลายวินาที จะเข้าใจว่าปุ่มเสียแล้วกดซ้ำ
+async function _withImgWait(msg, fn){
+  const loader = document.getElementById('pageLoader');
+  const lmsg   = document.getElementById('pageLoaderMsg');
+  // หน่วงก่อนโชว์เล็กน้อย ถ้าโหลดเสร็จไวจะไม่เห็นการกระพริบ
+  const t = setTimeout(() => {
+    if(lmsg) lmsg.textContent = msg;
+    if(loader) loader.style.display = 'flex';
+  }, 350);
+  try { return await fn(); }
+  finally {
+    clearTimeout(t);
+    if(loader) loader.style.display = 'none';
+  }
+}
+
+const _itemImgAsked = {};   // no -> true (ถามไปแล้ว ไม่ว่าจะมีรูปหรือไม่)
+let _itemImgBusy = false;
+const _itemImgQueue = [];   // งานที่รอคิวอยู่ {nos, onDone}
+// ตัดศูนย์นำหน้าเพื่อจับคู่ No. ให้ตรงกัน — แอปเติมศูนย์ครบ 6 หลักทุกแบบ
+// แต่ฝั่ง Apps Script เติมให้เฉพาะเลขล้วน รหัสที่มีตัวอักษรจึงเคยจับคู่ไม่ตรง
+const _noKey = v => String(v == null ? '' : v).trim().replace(/^0+(?=.)/, '');
+
+// คืน Promise ที่ resolve เมื่องาน "ชุดนี้" เสร็จจริง
+// สำคัญ: จุดที่ await ตัวนี้ (หน้าต่างแก้ไขสินค้า) ต้องได้รูปมาก่อนเปิดจริง ๆ
+// ไม่งั้นช่องรูปจะว่างแล้วตอนกดบันทึกจะทับรูปเดิมในชีตหาย
+// เดิมถ้ามีงานอื่นวิ่งอยู่ ฟังก์ชันนี้ return ทันทีโดยไม่รอ = await ไม่ได้รออะไรเลย
+function _ensureItemImages(nos, onDone){
+  if(!currentUser || _secureLocked || !navigator.onLine) return Promise.resolve();
+  const need = [...new Set((nos || []).filter(n => n && !_itemImgAsked[n]))];
+  if(!need.length) return Promise.resolve();
+  return new Promise(resolve => {
+    _itemImgQueue.push({nos: need, onDone: onDone, tries: 0, done: resolve});
+    // มีงานวิ่งอยู่แล้ว — แค่ต่อคิวไว้ เดี๋ยวตัวที่วิ่งอยู่จะดึงต่อเอง
+    if(!_itemImgBusy) _drainItemImgQueue();
+  });
+}
+
+async function _drainItemImgQueue(){
+  if(_itemImgBusy) return;
+  _itemImgBusy = true;
+  try {
+    while(_itemImgQueue.length){
+      const job = _itemImgQueue.shift();
+      // ขอทีละไม่เกิน 25 ตัว กัน URL ยาวเกินและ payload ใหญ่เกิน
+      const batch = job.nos.filter(n => !_itemImgAsked[n]).slice(0, 25);
+      if(!batch.length){ if(job.done) job.done(); continue; }
+      let ok = false;
+      try {
+        const res = await fetchTO(GS_URL + '?action=getItemImages&token=' + API_TOKEN +
+                                  '&nos=' + encodeURIComponent(batch.join(',')), {}, 20000);
+        const j = await readJson(res);
+        if(j && j.ok && j.data && typeof j.data === 'object'){
+          ok = true;
+          batch.forEach(n => { _itemImgAsked[n] = true; });
+          const byKey = {};
+          Object.keys(j.data).forEach(k => { byKey[_noKey(k)] = j.data[k]; });
+          let filled = 0;
+          db.forEach(r => {
+            const rec = j.data[r.no] || byKey[_noKey(r.no)];
+            if(!rec) return;
+            if(rec.pic  && !r.image)  { r.image  = _s(rec.pic);  filled++; }
+            if(rec.pic2 && !r.image2) { r.image2 = _s(rec.pic2); filled++; }
+            r.imgLight = false;
+          });
+          if(filled && typeof job.onDone === 'function') job.onDone();
+        }
+      } catch(e){
+        // ดึงรูปไม่ได้ก็ยังใช้งานข้อมูลได้ครบ ไม่ต้องรบกวนผู้ใช้
+      }
+      // ยังเหลือตัวที่ยังไม่ได้ถาม -> ต่อคิวไว้ทำต่อ
+      // ลองซ้ำได้ไม่เกิน 2 รอบ กันวนไม่จบเวลาเน็ตล่ม (ครั้งถัดไปที่วาดหน้าจะลองใหม่เอง)
+      const rest = job.nos.filter(n => !_itemImgAsked[n]);
+      if(rest.length && (ok || job.tries < 1)){
+        // ยังไม่จบ — ต่อคิวไว้ทำต่อ แล้วยก resolve ไปให้งานชิ้นต่อไป
+        _itemImgQueue.push({nos: rest, onDone: job.onDone, tries: job.tries + (ok ? 0 : 1), done: job.done});
+      } else if(job.done){
+        job.done();
+      }
+    }
+  } finally {
+    _itemImgBusy = false;
+    // เผื่อมีงานถูกต่อคิวเข้ามาตอนกำลังปิดรอบ
+    if(_itemImgQueue.length) _drainItemImgQueue();
+  }
+}
+
+// ===== [PERF-4] ดึงรูปหลักฐานของ "วันที่เปิดดู" มาเติมทีหลัง =====
+// ตอนเปิดแอปเราโหลดประวัติแบบ light (ไม่มีรูป) แถวจึงมีธง imgLight ติดมา
+// พอผู้ใช้เปิดดูวันไหน ค่อยดึงรูปของวันนั้นวันเดียว แล้ววาดใหม่
+// ดึงแล้วจำไว้ ไม่ดึงซ้ำ และถ้าดึงไม่สำเร็จก็เงียบไว้ ไม่ขึ้น error รบกวน
+const _dayImgLoaded = {};
+const _dayImgInFlight = {};   // date -> Promise ที่กำลังดึงอยู่
+function _ensureDayImages(date){
+  if(!date || _dayImgLoaded[date]) return Promise.resolve();
+  // ถ้าวันเดียวกันกำลังดึงอยู่ ให้รอรอบนั้นเลย ไม่ใช่ return เปล่า ๆ
+  // (เดิม return ทันที ทำให้จุดที่ await อยู่เปิดหน้าต่างแก้ไขก่อนได้รูป)
+  if(_dayImgInFlight[date]) return _dayImgInFlight[date];
+  const p = _fetchDayImages(date).finally(() => { delete _dayImgInFlight[date]; });
+  _dayImgInFlight[date] = p;
+  return p;
+}
+async function _fetchDayImages(date){
+  if(!currentUser || _secureLocked || !navigator.onLine) return;
+  const day = MOCK_DAILY.find(d => d.date === date);
+  if(!day || !Array.isArray(day.entries)) return;
+  // ไม่มีแถวไหนรอรูปอยู่เลย = ไม่ต้องยิง
+  if(!day.entries.some(e => e && e.imgLight)){ _dayImgLoaded[date] = true; return; }
+  try {
+    const res = await fetchTO(GS_URL + '?action=getDaily&token=' + API_TOKEN +
+                              '&date=' + encodeURIComponent(date), {}, 20000);
+    const j = await readJson(res);
+    if(!j || !j.ok || !Array.isArray(j.data)) return;
+    const srv = j.data.find(d => d && normDateStr(d.date) === date);
+    if(!srv || !Array.isArray(srv.entries)) return;
+
+    // จับคู่ด้วยลายเซ็นที่ไม่รวมรูป แถวซ้ำกันเป๊ะจ่ายทีละชุดตามลำดับ
+    const bucket = {};
+    srv.entries.forEach(e => {
+      if(!e || !e.images || !e.images.length) return;
+      const k = _entryCoreSig(_normEntry(Object.assign({}, e)));
+      (bucket[k] = bucket[k] || []).push(e.images);
+    });
+    let filled = 0;
+    day.entries.forEach(e => {
+      if(!e || !e.imgLight) return;
+      const b = bucket[_entryCoreSig(e)];
+      if(b && b.length){ e.images = b.shift(); filled++; }
+      delete e.imgLight;   // ถือว่าเช็คแล้ว ไม่ว่าจะเจอรูปหรือไม่
+    });
+    _dayImgLoaded[date] = true;
+    if(filled && window._currentDay === date) _redrawDaily(date);
+  } catch(e){
+    // ดึงรูปไม่ได้ก็ยังดูข้อมูลตัวเลขได้ครบ ไม่ต้องแจ้งเตือน
+  }
+}
+
 // วาดหน้าประวัติใหม่อย่างปลอดภัย (ถ้ายังไม่เคยเปิดหน้านี้ ให้ render ทั้งหน้าแทน)
 function _redrawDaily(date){
   if(typeof window._doRender === 'function'){
@@ -5145,6 +5344,7 @@ function renderDaily(container){
   // เปิดให้ฟังก์ชันข้างนอก (ลบ / แก้ไข / undo) เรียกใช้ได้ เดิมเรียก doRender ตรงๆ แล้ว ReferenceError
   window._doRender = doRender;
   window._currentDay = selectedDate;
+  _ensureDayImages(selectedDate);   // [PERF-4] ดึงรูปของวันที่เปิดอยู่มาเติมเบื้องหลัง
   window._selectDay = (date) => {
     if(!date) return;
     selectedDate = date;
@@ -5155,6 +5355,7 @@ function renderDaily(container){
     if(lbl && window._formatThDate) lbl.textContent = window._formatThDate(date);
     window._dpViewYear = null; window._dpViewMonth = null;
     _redrawDaily(date);
+    _ensureDayImages(date);   // [PERF-4] เปลี่ยนวันแล้วค่อยดึงรูปของวันใหม่
     // อัปเดตสีปุ่ม
     MOCK_DAILY.forEach(d => {
       const btn = document.getElementById('daybtn_' + d.date);
@@ -5728,9 +5929,12 @@ async function deleteDailyEntry(date, entryIdx){
   } finally { _dailyMutating = false; }   // [Fix V8-5]
 }
 
-function editDailyEntry(date, entryIdx){
+async function editDailyEntry(date, entryIdx){
   // [Fix 2.10] กันเปิด modal แก้ไขด้วย index ชุดเก่าระหว่างที่การลบก่อนหน้ายังรอ sync อยู่
   if(_dailyMutating){ showToast('กำลังบันทึกรายการก่อนหน้าอยู่ กรุณารอสักครู่'); return; }
+  // [PERF-4] ต้องได้รูปของวันนั้นมาก่อน ไม่งั้นถ้าผู้ใช้แก้จำนวน/Location ด้วย
+  // ลายเซ็นของแถวจะเปลี่ยน ตาข่ายกันรูปหายฝั่ง Apps Script จะจับคู่รูปเดิมไม่เจอ
+  await _withImgWait('กำลังโหลดรูปหลักฐานของวันนี้...', () => _ensureDayImages(date));
   const day = MOCK_DAILY.find(d=>d.date===date);
   if(!day) return;
   // ใช้ entryIdx ตรงๆ ที่ doRender ส่งมาให้แล้ว (index ใน day.entries จริงๆ)
