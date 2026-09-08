@@ -1073,7 +1073,7 @@ tbody tr:hover {
 // GitHub Pages เก็บแคชไฟล์ HTML ไว้ที่ CDN ราว 10 นาที และเบราว์เซอร์เก็บซ้ำอีกชั้น
 // หลังอัปโหลดไฟล์ใหม่จึงมักยังเห็นของเก่าอยู่ — เดิมไม่มีทางรู้เลยว่าเห็นเวอร์ชันไหน
 // ถ้าเลขที่แสดงไม่ตรงกับไฟล์ที่เพิ่งอัปโหลด ให้กด Ctrl+Shift+R (หรือ Cmd+Shift+R บน Mac)
-const APP_VERSION = 'v31';
+const APP_VERSION = 'v32';
 const APP_BUILD   = '7 ก.ย. 2569';
 (function _paintVersion(){
   const set = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
@@ -1231,6 +1231,7 @@ const UNIT_OPTIONS = [
   {value:'ถัง',     label:'ถัง'},
   {value:'ตัน',     label:'ตัน (1,000 กก.)'},
   {value:'เลท',     label:'เลท (กรอกสูตร เช่น 50x48)'},
+  {value:'เลท (500 กก.)', label:'เลท (500 กก.)'},   // [LOT-6] เลทน้ำหนักคงที่ 500 กก. + กรอกเศษเป็นลูก
 ];
 // [V19-1] หน่วยที่น้ำหนักต่อหน่วย "คงที่" — กรอกแค่จำนวน ระบบคูณเป็น กก. ให้เอง ไม่ต้องกรอก กก./หน่วย
 // ค่าใน map นี้คือแหล่งความจริงที่เดียว ทั้งการคำนวณ การแสดงผล และการตรวจก่อนบันทึก
@@ -1238,7 +1239,7 @@ const _FIXED_WPU      = {'bigbag': 1000, '500 กก.': 500};
 const _FIXED_WPU_NOTE = {'bigbag': '≈ 1,000 กก./ใบ (ค่ามาตรฐาน)', '500 กก.': '= 500 กก./ถุง (ค่าคงที่)'};
 // ชื่อหน่วยที่บอกน้ำหนักอยู่ในตัวเองแล้ว — เวลาแสดงผลไม่ต้องต่อท้ายด้วย "× 500 กก." ซ้ำอีก
 // (ไม่งั้นได้ "10 500 กก. × 500 กก." ซึ่งอ่านแล้วสับสนว่าจำนวนคือ 10 หรือ 10,500)
-const _UNIT_SELF_WEIGHT = {'500 กก.': true};
+const _UNIT_SELF_WEIGHT = {'500 กก.': true, 'เลท (500 กก.)': true};   // [LOT-6]
 
 // ===== [V20-1] หน่วย "เลท" =====
 // หน้างานนับเป็นเลท แต่แต่ละเลทไม่เท่ากัน จึงให้กรอกสูตรของเลทนั้นเอง เช่น 50x48
@@ -1266,15 +1267,15 @@ function _parseLotFormula(txt){
   return null;
 }
 
-function _itemLotKg(no){
-  if(!no) return null;
-  const it = db.find(r => r.no === no);
-  if(!it || !it.lotKg) return null;
-  const v = toNum(it.lotKg);
-  return (v > 0) ? v : null;
-}
-// สินค้าตัวนี้นับเป็นเลทประจำหรือไม่ (มีค่าในคอลัมน์ กก./เลท)
-function _isLotItem(no){ return _itemLotKg(no) !== null; }
+// [LOT-6] หน่วยเลทที่น้ำหนักต่อเลท "คงที่" — เลือกจากดรอปดาวน์ได้ตรง ๆ ไม่ต้องตั้งอะไรในชีต
+// ค่าใน map นี้คือแหล่งความจริงที่เดียว ทั้งการคำนวณ การแสดงผล และการตรวจก่อนบันทึก
+// อยากเพิ่ม "เลท (600 กก.)" ในอนาคต ก็เพิ่มที่นี่กับใน UNIT_OPTIONS เท่านั้น
+const _LOT_FIXED_KG = {'เลท (500 กก.)': 500};
+
+// หน่วยนี้เป็นหน่วยเลทหรือไม่ (ทั้งแบบกรอกสูตรเอง และแบบน้ำหนักคงที่)
+function _isLotUnit(u){ return u === _LOT_UNIT || _LOT_FIXED_KG[u] !== undefined; }
+// น้ำหนักต่อเลทที่ตายตัวของหน่วยนี้ — undefined = ต้องกรอกสูตรเอง
+function _lotUnitKg(u){ return _LOT_FIXED_KG[u]; }
 
 // น้ำหนักต่อลูกที่ใช้คิดเศษ — เอาจาก นน./หน่วย ของสินค้าก่อน
 // ถ้าไม่มีแต่กรอกแบบคูณ 50x48 ไว้ ก็ใช้ตัวคูณหน้า (50) เป็น กก./ลูก แทน (เข้ากันได้กับข้อมูลเดิม)
@@ -1290,7 +1291,7 @@ function _lotLabel(f){
 }
 // หมายเหตุที่จะเขียนลงชีต — แนบสูตรไว้ด้วยเสมอ ไม่งั้นย้อนดูทีหลังจะไม่รู้ว่าเลทนั้นคิดจากอะไร
 function _seEntryNote(s){
-  if(!s || s.unit !== _LOT_UNIT) return s && s.note ? s.note : '';
+  if(!s || !_isLotUnit(s.unit)) return s && s.note ? s.note : '';   // [LOT-6]
   const f = _parseLotFormula(s.lotF);
   const lab = f ? _lotLabel(f) : '';
   if(!lab) return s.note || '';
@@ -1301,7 +1302,7 @@ function _seEntryNote(s){
 // [LOT-2] แถวเศษใช้หน่วย "ลูก" พร้อม กก.ต่อหน่วย ที่ระบบเติมให้จาก นน./หน่วย ของสินค้า
 // ต้องรับ no เข้ามาด้วย เพราะน้ำหนักต่อลูกเป็นค่าเฉพาะของสินค้าแต่ละตัว (S190=25, S105=20)
 function _lotRemainderRow(s, no){
-  if(!s || s.unit !== _LOT_UNIT) return null;
+  if(!s || !_isLotUnit(s.unit)) return null;   // [LOT-6]
   const rem = toNum(s.lotRem);
   if(!(rem > 0)) return null;
   const f = _parseLotFormula(s.lotF);
@@ -1318,16 +1319,8 @@ function _lotRemainderRow(s, no){
   };
 }
 
-// [LOT-5] รับ no เข้ามาด้วย เพื่อเปลี่ยนป้ายของหน่วย "เลท" ตามสินค้า
-// สินค้าที่ตั้ง กก./เลท ไว้ในชีต -> ป้ายในดรอปดาวน์เป็น "เลท (500 กก.)"
-// สินค้าอื่น -> ป้ายเดิม "เลท (กรอกสูตร เช่น 50x48)"
-// ป้ายเปลี่ยนเฉพาะข้อความที่แสดง ค่าที่บันทึกลงชีตยังเป็น "เลท" เหมือนกันทุกตัว
-function _unitOptionsHtml(selected, no){
+function _unitOptionsHtml(selected){
   const sel = selected || '';
-  const _lotKg = no ? _itemLotKg(no) : null;
-  const _label = u => (u.value === _LOT_UNIT && _lotKg !== null)
-    ? ('เลท (' + _lotKg.toLocaleString() + ' กก.)')
-    : u.label;
   // [Fix 2.4] เช่นเดียวกับ location — หน่วยอย่าง 'ton'/'bag' ที่ convertToKg ยังรองรับอยู่
   // แต่ไม่มีใน UNIT_OPTIONS จะถูกล้างทิ้งทันทีที่เปิด modal แก้ไขแล้วกดบันทึก
   let extra = '';
@@ -1335,7 +1328,7 @@ function _unitOptionsHtml(selected, no){
     extra = `<option value="${escHtml(sel)}" selected>${escHtml(sel)} (ค่าเดิม)</option>`;
   }
   return '<option value="">- เลือกหน่วย -</option>' + extra +
-    UNIT_OPTIONS.map(u => `<option value="${escHtml(u.value)}" ${sel===u.value?'selected':''}>${escHtml(_label(u))}</option>`).join('');
+    UNIT_OPTIONS.map(u => `<option value="${escHtml(u.value)}" ${sel===u.value?'selected':''}>${escHtml(u.label)}</option>`).join('');
 }
 
 // [Fix V8-17] ลบ CODE_GROUPS ออก — ประกาศไว้แต่ไม่มีใครใช้ทั้งไฟล์ และเนื้อหาไม่ตรงกับของจริงด้วย
@@ -1912,9 +1905,6 @@ async function loadFromSheet(opts){
       desc:    _s(r['Description']),
       pkg:     _s(r['บรรจุ']),
       col2:    _s(r['นน./หน่วย']),
-      // [LOT-3] คอลัมน์ใหม่ในชีต Item: "กก./เลท" — ใส่ค่าไว้เฉพาะสินค้าที่นับเป็นเลท
-      // สินค้าที่ช่องนี้ว่าง หน่วยเลทจะทำงานเหมือน v20 เดิมทุกอย่าง (กรอกสูตรเอง)
-      lotKg:   _s(r['กก./เลท']),
       cond:    _s(r['เงื่อนไขการซื้อขาย']),
       loc:     _s(r['location']),
       storage: _s(r['สถานที่จัดเก็บ']),
@@ -3606,6 +3596,7 @@ function _rowWpu(e){
   if(e.kgPerUnit && toNum(e.kgPerUnit) > 0) return toNum(e.kgPerUnit);
   if(_ITEM_WPU_UNITS[e.unit]) return getWeightPerUnit(e.no);   // [LOT-2] กระสอบ / ลูก
   if(_FIXED_WPU[e.unit]) return _FIXED_WPU[e.unit];   // [V19-1] bigbag / 500 กก.
+  if(_LOT_FIXED_KG[e.unit] !== undefined) return _LOT_FIXED_KG[e.unit];   // [LOT-6]
   if(e.unit === 'ตัน' || e.unit === 'ton') return 1000;
   if(e.unit === 'กก.' || e.unit === 'kg') return null;   // 1 กก. ต่อ กก. ไม่ต้องโชว์
   if(e.unit === 'กระสอบ' || e.unit === 'bag') return getWeightPerUnit(e.no);
@@ -3643,6 +3634,7 @@ function convertToKg(qty, unit, no, overrideWpu){
     'ตัน':     1000,
     'ton':     1000,
     ..._FIXED_WPU,   // [V19-1] bigbag: 1000, '500 กก.': 500
+    ..._LOT_FIXED_KG,   // [LOT-6] 'เลท (500 กก.)': 500 — เผื่อแถวไหนช่อง กก.ต่อหน่วย ว่าง
   };
   const wpu = wpuMap[unit] !== undefined ? wpuMap[unit] : getWeightPerUnit(no);
   if(!wpu) return null;
@@ -4059,14 +4051,15 @@ function _lotBoxHtml(itemId, i, s){
   const each = _lotRemKgEach(no, f);
   const inp  = 'padding:4px 7px;border:1px solid #cfe0f2;border-radius:4px;font-size:12px;font-family:inherit';
 
-  // [LOT-4] สินค้าที่ตั้ง กก./เลท ไว้ในชีต -> น้ำหนักเลทเป็นค่าคงที่ ไม่ต้องมีช่องกรอก
-  // แสดงเป็นข้อความ "เลท (500 กก.)" เฉย ๆ แบบเดียวกับที่บิ๊กแบ็คโชว์น้ำหนักมาตรฐาน
-  // เหลือให้กรอกแค่ช่องเศษ จะได้ไม่มีอะไรให้กรอกผิด
-  const isLot = _isLotItem(no);
+  // [LOT-6] หน่วยเลทน้ำหนักคงที่ (เช่น "เลท (500 กก.)") -> ไม่มีช่องกรอกน้ำหนัก
+  // ชื่อหน่วยบอกน้ำหนักอยู่แล้ว เหลือให้กรอกแค่ช่องเศษ จะได้ไม่มีอะไรให้กรอกผิด
+  // หน่วย "เลท" ธรรมดา -> ช่องกรอกสูตรเหมือน v20 เดิมทุกอย่าง
+  const fixedKg = _lotUnitKg(s.unit);
   let head;
-  if(isLot){
-    head = '<span style="font-size:11.5px;color:var(--ink-2);font-weight:500">เลท ('
-         + escHtml(_itemLotKg(no).toLocaleString()) + ' กก.)</span>';
+  if(fixedKg !== undefined){
+    head = '<span style="font-size:11px;color:var(--ink-3)">' + fixedKg.toLocaleString() + ' กก./เลท'
+         + (each > 0 ? ('  \u00b7  1 เลท = ' + Number((fixedKg / each).toFixed(2)).toLocaleString() + ' ลูก') : '')
+         + '</span>';
   } else {
     const bad = String(s.lotF || '').trim() !== '' && !f;
     head = '<label style="font-size:11px;color:var(--ink-2);display:flex;align-items:center;gap:5px">สูตร/เลท:'
@@ -4098,11 +4091,11 @@ function _seRefreshLot(itemId, i){
   s.kgPerUnit = f ? String(f.kgPerLot) : '';
   const _item = db.find(x => x.id === itemId);
   const _no   = _item ? _item.no : '';
-  // [LOT-4] สินค้านับเลท: น้ำหนักเลทยึดจากชีตเสมอ หน้าจอไม่มีช่องให้กรอก
-  // เขียนทับไว้กันกรณีค่าในสถานะหลุด (เช่นข้อมูลค้างจากก่อนอัปเดต) แล้วยอด กก. จะเป็นศูนย์เงียบ ๆ
-  if(_isLotItem(_no)){
-    s.lotF = String(_itemLotKg(_no));
-    s.kgPerUnit = String(_itemLotKg(_no));
+  // [LOT-6] หน่วยเลทน้ำหนักคงที่: ยึดค่าจากชื่อหน่วยเสมอ ไม่มีช่องให้กรอก
+  const _fx = _lotUnitKg(s.unit);
+  if(_fx !== undefined){
+    s.lotF = String(_fx);
+    s.kgPerUnit = String(_fx);
   }
   const hintEl = document.getElementById('se_lothint_' + itemId + '_' + i);
   if(hintEl){
@@ -4118,12 +4111,11 @@ function _seRowUnitChanged(itemId, i, unit){
   const extra = document.getElementById('se_extra_'+itemId+'_'+i);
   if(!extra) return;
   const item = db.find(x=>x.id===itemId);
-  if(unit === _LOT_UNIT){   // [V20-1] เลท — ใช้กล่องกรอกของตัวเอง ไม่ใช้ช่อง กก./หน่วย แบบอื่น
+  if(_isLotUnit(unit)){   // [V20-1]/[LOT-6] เลททุกแบบใช้กล่องของตัวเอง ไม่ใช้ช่อง กก./หน่วย แบบอื่น
     const _row = window._seStocks[itemId][i];
-    // [LOT-3/4] สินค้าที่ตั้ง กก./เลท ไว้ในชีต -> ยึดค่าจากชีตเสมอ (หน้าจอโชว์เป็นข้อความ ไม่มีช่องกรอก)
-    // สินค้าอื่น -> ปล่อยว่างให้กรอกสูตรเองเหมือน v20
-    const _no0 = item ? item.no : '';
-    if(_isLotItem(_no0)) _row.lotF = String(_itemLotKg(_no0));
+    // [LOT-6] หน่วยน้ำหนักคงที่ -> เติมค่าให้เลย | หน่วย "เลท" ธรรมดา -> ปล่อยว่างเหมือน v20
+    const _fx0 = _lotUnitKg(unit);
+    if(_fx0 !== undefined) _row.lotF = String(_fx0);
     if(!_row.lotRemU) _row.lotRemU = 'luk';
     extra.innerHTML = _lotBoxHtml(itemId, i, _row);
     _seRefreshLot(itemId, i);
@@ -4157,13 +4149,12 @@ function _updateSERowPreview(itemId, i){
   const qty = toNum(s.qty);
   if(!qty || !s.unit){ preview.innerHTML=''; return; }
   // [V20-1] หน่วยเลท: โชว์ที่มาของตัวเลขให้ครบ จำนวนเลท x กก./เลท + เศษ = รวม
-  if(s.unit === _LOT_UNIT){
+  if(_isLotUnit(s.unit)){   // [LOT-6]
     const _it = db.find(x => x.id === itemId);
     const _no = _it ? _it.no : '';
     const f = _parseLotFormula(s.lotF);
     if(!f){
-      preview.innerHTML = '<span style="color:var(--red)">'
-        + (_isLotItem(_no) ? 'กรอก กก./เลท ก่อน' : 'กรอกสูตรของเลทก่อน เช่น 50x48') + '</span>';
+      preview.innerHTML = '<span style="color:var(--red)">กรอกสูตรของเลทก่อน เช่น 50x48</span>';
       return;
     }
     const lotKg = r2(qty * f.kgPerLot);
@@ -4202,7 +4193,7 @@ function _updateSERowPreview(itemId, i){
 }
 
 function _seExtraHtml(itemId, i, s){
-  if(s.unit === _LOT_UNIT) return _lotBoxHtml(itemId, i, s);   // [V20-1]
+  if(_isLotUnit(s.unit)) return _lotBoxHtml(itemId, i, s);   // [V20-1]/[LOT-6]
   if(_WPU_UNITS[s.unit]){   // [Fix V9-7] กระสอบ / ถัง / เบาท์
     return '<label style="font-size:11px;color:#888;display:flex;align-items:center;gap:5px">'+escHtml(_WPU_UNITS[s.unit])+':'
       + '<input type="number" min="0" step="any" placeholder="เช่น 50" value="'+escHtml(numAttr(s.kgPerUnit))+'" style="width:90px;padding:4px 7px;border:1px solid var(--rule);border-radius:4px;font-size:12px"'   // [Fix V11-1]
@@ -4255,7 +4246,7 @@ function _renderSERows(itemId){
       + '<select onchange="updateSE('+itemId+','+i+',\'location\',this.value)">'+_locationOptionsHtml(s.location||'')+'</select>'
       + '<input placeholder="สถานที่จัดเก็บ" value="'+escHtml(s.loc||'')+'" oninput="updateSE('+itemId+','+i+',\'loc\',this.value)">'
       + '<input placeholder="จำนวน" type="number" min="0" step="any" value="'+escHtml(numAttr(s.qty))+'" oninput="updateSE('+itemId+','+i+',\'qty\',this.value);_updateSERowPreview('+itemId+','+i+')">'   // [Fix V11-1]
-      + '<select onchange="_seRowUnitChanged('+itemId+','+i+',this.value)">'+_unitOptionsHtml(s.unit||'', (db.find(x=>x.id===itemId)||{}).no)+'</select>'
+      + '<select onchange="_seRowUnitChanged('+itemId+','+i+',this.value)">'+_unitOptionsHtml(s.unit||'')+'</select>'
       + '<input placeholder="หมายเหตุ (ถ้ามี)" value="'+escHtml(s.note||'')+'" oninput="updateSE('+itemId+','+i+',\'note\',this.value)">'
       + '<button class="btn-remove" onclick="removeSERow('+itemId+','+i+')" type="button">×</button>'
       + '</div>'
@@ -4511,12 +4502,13 @@ async function saveStockItem(itemId, btnEl){
         s.kgPerUnit = String(_FIXED_WPU[s.unit]); // [V19-1] ค่ามาตรฐาน เผื่อไม่ได้ตั้งไว้
       }
       // [V20-1] หน่วยเลท: ต้องมีค่า กก./เลท ที่อ่านออก ไม่งั้นยอด กก. จะกลายเป็นศูนย์เงียบ ๆ
-      if(s.unit === _LOT_UNIT){
+      if(_isLotUnit(s.unit)){   // [LOT-6]
+        // หน่วยน้ำหนักคงที่ไม่มีช่องให้กรอก จึงเติมค่าจากชื่อหน่วยให้ก่อนตรวจ
+        const _fxv = _lotUnitKg(s.unit);
+        if(_fxv !== undefined) s.lotF = String(_fxv);
         const f = _parseLotFormula(s.lotF);
         if(!f){
-          showToast(_isLotItem(r.no)
-            ? ('กรุณากรอก กก./เลท เช่น ' + _itemLotKg(r.no))
-            : 'กรุณากรอกสูตรของเลท เช่น 50x48 (50 กก./ลูก × 48 ลูก)', 'error');
+          showToast('กรุณากรอกสูตรของเลท เช่น 50x48 (50 กก./ลูก × 48 ลูก)', 'error');
           return;
         }
         s.kgPerUnit = String(f.kgPerLot);
@@ -6094,7 +6086,7 @@ async function editDailyEntry(date, entryIdx){
       </div>
       <div class="form-group">
         <label>หน่วย</label>
-        <select id="edit_unit" onchange="_editEntryUnitChanged(this.value)">${_unitOptionsHtml(entry.unit||'', entry.no||'')}</select>
+        <select id="edit_unit" onchange="_editEntryUnitChanged(this.value)">${_unitOptionsHtml(entry.unit||'')}</select>
       </div>
     </div>
     <div class="form-group" id="edit_wpu_wrap" style="display:${(entry.unit==='กระสอบ'||_FIXED_WPU[entry.unit])?'flex':'none'}">
