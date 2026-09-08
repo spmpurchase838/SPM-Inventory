@@ -1073,7 +1073,7 @@ tbody tr:hover {
 // GitHub Pages เก็บแคชไฟล์ HTML ไว้ที่ CDN ราว 10 นาที และเบราว์เซอร์เก็บซ้ำอีกชั้น
 // หลังอัปโหลดไฟล์ใหม่จึงมักยังเห็นของเก่าอยู่ — เดิมไม่มีทางรู้เลยว่าเห็นเวอร์ชันไหน
 // ถ้าเลขที่แสดงไม่ตรงกับไฟล์ที่เพิ่งอัปโหลด ให้กด Ctrl+Shift+R (หรือ Cmd+Shift+R บน Mac)
-const APP_VERSION = 'v30';
+const APP_VERSION = 'v31';
 const APP_BUILD   = '7 ก.ย. 2569';
 (function _paintVersion(){
   const set = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
@@ -1318,8 +1318,16 @@ function _lotRemainderRow(s, no){
   };
 }
 
-function _unitOptionsHtml(selected){
+// [LOT-5] รับ no เข้ามาด้วย เพื่อเปลี่ยนป้ายของหน่วย "เลท" ตามสินค้า
+// สินค้าที่ตั้ง กก./เลท ไว้ในชีต -> ป้ายในดรอปดาวน์เป็น "เลท (500 กก.)"
+// สินค้าอื่น -> ป้ายเดิม "เลท (กรอกสูตร เช่น 50x48)"
+// ป้ายเปลี่ยนเฉพาะข้อความที่แสดง ค่าที่บันทึกลงชีตยังเป็น "เลท" เหมือนกันทุกตัว
+function _unitOptionsHtml(selected, no){
   const sel = selected || '';
+  const _lotKg = no ? _itemLotKg(no) : null;
+  const _label = u => (u.value === _LOT_UNIT && _lotKg !== null)
+    ? ('เลท (' + _lotKg.toLocaleString() + ' กก.)')
+    : u.label;
   // [Fix 2.4] เช่นเดียวกับ location — หน่วยอย่าง 'ton'/'bag' ที่ convertToKg ยังรองรับอยู่
   // แต่ไม่มีใน UNIT_OPTIONS จะถูกล้างทิ้งทันทีที่เปิด modal แก้ไขแล้วกดบันทึก
   let extra = '';
@@ -1327,7 +1335,7 @@ function _unitOptionsHtml(selected){
     extra = `<option value="${escHtml(sel)}" selected>${escHtml(sel)} (ค่าเดิม)</option>`;
   }
   return '<option value="">- เลือกหน่วย -</option>' + extra +
-    UNIT_OPTIONS.map(u => `<option value="${escHtml(u.value)}" ${sel===u.value?'selected':''}>${escHtml(u.label)}</option>`).join('');
+    UNIT_OPTIONS.map(u => `<option value="${escHtml(u.value)}" ${sel===u.value?'selected':''}>${escHtml(_label(u))}</option>`).join('');
 }
 
 // [Fix V8-17] ลบ CODE_GROUPS ออก — ประกาศไว้แต่ไม่มีใครใช้ทั้งไฟล์ และเนื้อหาไม่ตรงกับของจริงด้วย
@@ -4247,7 +4255,7 @@ function _renderSERows(itemId){
       + '<select onchange="updateSE('+itemId+','+i+',\'location\',this.value)">'+_locationOptionsHtml(s.location||'')+'</select>'
       + '<input placeholder="สถานที่จัดเก็บ" value="'+escHtml(s.loc||'')+'" oninput="updateSE('+itemId+','+i+',\'loc\',this.value)">'
       + '<input placeholder="จำนวน" type="number" min="0" step="any" value="'+escHtml(numAttr(s.qty))+'" oninput="updateSE('+itemId+','+i+',\'qty\',this.value);_updateSERowPreview('+itemId+','+i+')">'   // [Fix V11-1]
-      + '<select onchange="_seRowUnitChanged('+itemId+','+i+',this.value)">'+_unitOptionsHtml(s.unit||'')+'</select>'
+      + '<select onchange="_seRowUnitChanged('+itemId+','+i+',this.value)">'+_unitOptionsHtml(s.unit||'', (db.find(x=>x.id===itemId)||{}).no)+'</select>'
       + '<input placeholder="หมายเหตุ (ถ้ามี)" value="'+escHtml(s.note||'')+'" oninput="updateSE('+itemId+','+i+',\'note\',this.value)">'
       + '<button class="btn-remove" onclick="removeSERow('+itemId+','+i+')" type="button">×</button>'
       + '</div>'
@@ -6086,7 +6094,7 @@ async function editDailyEntry(date, entryIdx){
       </div>
       <div class="form-group">
         <label>หน่วย</label>
-        <select id="edit_unit" onchange="_editEntryUnitChanged(this.value)">${_unitOptionsHtml(entry.unit||'')}</select>
+        <select id="edit_unit" onchange="_editEntryUnitChanged(this.value)">${_unitOptionsHtml(entry.unit||'', entry.no||'')}</select>
       </div>
     </div>
     <div class="form-group" id="edit_wpu_wrap" style="display:${(entry.unit==='กระสอบ'||_FIXED_WPU[entry.unit])?'flex':'none'}">
