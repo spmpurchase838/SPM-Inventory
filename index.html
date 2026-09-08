@@ -514,6 +514,16 @@ td { padding: 8px 12px; vertical-align: middle; }
 .stock-row.stock-row-note {
   grid-template-columns: 1fr 1fr 90px 70px 1.3fr 28px;
 }
+/* [MOBILE-1] Location รายแถว — ย่อเป็นชิปเมื่อค่าถูกเติมให้แล้ว
+   บนมือถือ select ตัวนี้กินความกว้างเต็มบรรทัด = เสียพื้นที่ 1 บรรทัดต่อ 1 แถวกรอก
+   ทั้งที่ค่าถูกเติมให้จาก "Location ที่ตรวจวันนี้" อยู่แล้วและไม่ต้องแตะ */
+.se-loc { display: flex; min-width: 0; }
+.se-loc select { width: 100%; }
+.se-loc-chip {
+  width: 100%; padding: 6px 9px; border-radius: 4px; cursor: pointer;
+  font-family: inherit; font-size: 12px; text-align: left;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .stock-row input, .stock-row select {
   padding: 6px 9px;
   border: 1px solid var(--rule);
@@ -815,10 +825,12 @@ tbody tr:hover {
   .modal { padding: 16px; margin: 0; border-radius: 8px; }
   .modal h2 { font-size: 14px; }
   .stock-row { grid-template-columns: 1fr 1fr; gap: 5px; }
-  /* Location select spans both columns so it gets full width on mobile */
-  .stock-row > select:first-child { grid-column: 1 / -1; }
   .stock-row.stock-row-note { grid-template-columns: 1fr 1fr; gap: 5px; }
-  .stock-row.stock-row-note > select:first-child { grid-column: 1 / -1; }
+  /* [MOBILE-1] ตอนเป็น select (ยังไม่ได้เลือก/กำลังแก้) ให้กินเต็มบรรทัดเหมือนเดิม
+     แต่ตอนเป็นชิปให้อยู่คอลัมน์เดียว จะได้คืนพื้นที่ให้ช่องจำนวน/หน่วย */
+  .stock-row > .se-loc.is-select { grid-column: 1 / -1; }
+  .stock-row > .se-loc.is-chip   { grid-column: auto; }
+  .se-loc-chip { min-height: 40px; font-size: 14px; }
   .se-row-header { display: none !important; }
   .stock-row input, .stock-row select { font-size: 16px; padding: 8px 9px; }
   /* Ensure remove button is a comfortable touch target */
@@ -1073,7 +1085,7 @@ tbody tr:hover {
 // GitHub Pages เก็บแคชไฟล์ HTML ไว้ที่ CDN ราว 10 นาที และเบราว์เซอร์เก็บซ้ำอีกชั้น
 // หลังอัปโหลดไฟล์ใหม่จึงมักยังเห็นของเก่าอยู่ — เดิมไม่มีทางรู้เลยว่าเห็นเวอร์ชันไหน
 // ถ้าเลขที่แสดงไม่ตรงกับไฟล์ที่เพิ่งอัปโหลด ให้กด Ctrl+Shift+R (หรือ Cmd+Shift+R บน Mac)
-const APP_VERSION = 'v33';
+const APP_VERSION = 'v34';
 const APP_BUILD   = '7 ก.ย. 2569';
 (function _paintVersion(){
   const set = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
@@ -4058,6 +4070,52 @@ function _lotHintText(no, s){
   return t;
 }
 
+// ===== [MOBILE-1] Location รายแถว: ชิปย่อ / ดรอปดาวน์ =====
+// ยังไม่ได้เลือก          -> ดรอปดาวน์เต็ม (ต้องเลือกเอง)
+// ตรงกับ Location วันนี้   -> ชิปสีเทา แตะเพื่อเปลี่ยน
+// ต่างจาก Location วันนี้  -> ชิปสีเหลือง + เครื่องหมายเตือน ให้เห็นชัดว่าแถวนี้พิเศษ
+// เปลี่ยนแค่การแสดงผล ค่าที่บันทึกยังเป็น s.location ตัวเดิม
+function _seLocOpened(itemId, i, s){
+  const cur = String((s && s.location) || '').trim();
+  return !cur || !!(window._seLocOpen && window._seLocOpen[itemId + '_' + i]);
+}
+function _seLocClass(itemId, i, s){
+  return 'se-loc ' + (_seLocOpened(itemId, i, s) ? 'is-select' : 'is-chip');
+}
+function _seLocHtml(itemId, i, s){
+  const cur = String(s.location || '').trim();
+  if(_seLocOpened(itemId, i, s)){
+    return '<select onchange="updateSE(' + itemId + ',' + i + ',\'location\',this.value);_seCloseLoc(' + itemId + ',' + i + ')">'
+         + _locationOptionsHtml(cur) + '</select>';
+  }
+  const def  = window._seDefaultLoc || '';
+  const same = !def || cur === def;
+  const st   = same
+    ? 'background:var(--tint);border:1px solid #cfe0f2;color:var(--ink-2)'
+    : 'background:#fff8e8;border:1px solid #f0d9a8;color:#6b4a06';
+  return '<button type="button" class="se-loc-chip" style="' + st + '"'
+       + ' title="' + escHtml(cur + (same ? '' : ' (ต่างจาก Location ที่ตรวจวันนี้)')) + ' \u2014 แตะเพื่อเปลี่ยน"'
+       + ' onclick="_seOpenLoc(' + itemId + ',' + i + ')">\ud83d\udccd ' + escHtml(cur)
+       + (same ? '' : ' \u26a0') + '</button>';
+}
+function _sePaintLoc(itemId, i){
+  const s  = (window._seStocks[itemId] || [])[i];
+  const el = document.getElementById('se_loc_' + itemId + '_' + i);
+  if(!s || !el) return;   // [Fix V11-2] อาจถูกเรียกหลังออกจากหน้านี้ไปแล้ว
+  el.className = _seLocClass(itemId, i, s);
+  el.innerHTML = _seLocHtml(itemId, i, s);
+  const sel = el.querySelector('select');
+  if(sel) sel.focus();
+}
+window._seOpenLoc = function(itemId, i){
+  (window._seLocOpen = window._seLocOpen || {})[itemId + '_' + i] = true;
+  _sePaintLoc(itemId, i);
+};
+window._seCloseLoc = function(itemId, i){
+  if(window._seLocOpen) delete window._seLocOpen[itemId + '_' + i];
+  _sePaintLoc(itemId, i);
+};
+
 function _lotBoxHtml(itemId, i, s){
   const item = db.find(x => x.id === itemId);
   const no   = item ? item.no : '';
@@ -4258,7 +4316,7 @@ function _renderSERows(itemId){
   container.innerHTML = stocks.map((s,i) => {
     return '<div style="margin-bottom:6px">'
       + '<div class="stock-row stock-row-note" style="margin-bottom:3px">'
-      + '<select onchange="updateSE('+itemId+','+i+',\'location\',this.value)">'+_locationOptionsHtml(s.location||'')+'</select>'
+      + '<span class="'+_seLocClass(itemId,i,s)+'" id="se_loc_'+itemId+'_'+i+'">'+_seLocHtml(itemId,i,s)+'</span>'   // [MOBILE-1]
       + '<input placeholder="สถานที่จัดเก็บ" value="'+escHtml(s.loc||'')+'" oninput="updateSE('+itemId+','+i+',\'loc\',this.value)">'
       + '<input placeholder="จำนวน" type="number" min="0" step="any" value="'+escHtml(numAttr(s.qty))+'" oninput="updateSE('+itemId+','+i+',\'qty\',this.value);_updateSERowPreview('+itemId+','+i+')">'   // [Fix V11-1]
       + '<select onchange="_seRowUnitChanged('+itemId+','+i+',this.value)">'+_unitOptionsHtml(s.unit||'')+'</select>'
