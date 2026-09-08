@@ -1085,7 +1085,7 @@ tbody tr:hover {
 // GitHub Pages เก็บแคชไฟล์ HTML ไว้ที่ CDN ราว 10 นาที และเบราว์เซอร์เก็บซ้ำอีกชั้น
 // หลังอัปโหลดไฟล์ใหม่จึงมักยังเห็นของเก่าอยู่ — เดิมไม่มีทางรู้เลยว่าเห็นเวอร์ชันไหน
 // ถ้าเลขที่แสดงไม่ตรงกับไฟล์ที่เพิ่งอัปโหลด ให้กด Ctrl+Shift+R (หรือ Cmd+Shift+R บน Mac)
-const APP_VERSION = 'v34';
+const APP_VERSION = 'v35';
 const APP_BUILD   = '7 ก.ย. 2569';
 (function _paintVersion(){
   const set = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
@@ -1785,7 +1785,10 @@ async function _peekTodayChanges(){
         MOCK_DAILY.push(day);
         _clearDailyIndex();
       }
-      const mg = await _mergeServerDay(day);
+      // [MOBILE-2] โหมด light — ไม่ดึงรูปหลักฐานมา ประหยัดเน็ตมือถือ
+      // แถวของเพื่อนร่วมงานจะติดธง imgLight ไว้ พอเปิดดูประวัติวันนั้นจริง ๆ
+      // _ensureDayImages จะไปดึงรูปมาให้เอง
+      const mg = await _mergeServerDay(day, true);
       if(!mg.ok) return;
       _clearStockCache(); _clearDailyIndex();
       _saveDailyData();
@@ -4412,12 +4415,18 @@ function _entrySig(e){
 //   ok=false → ตรวจสอบไม่ได้ (ออฟไลน์/หมดเวลา) ห้ามเขียนทับ ให้เก็บเข้าคิวแทน
 //   replaced=true → ยึดข้อมูลบนชีตเป็นความจริงแล้ว (day.entries ถูกสร้างใหม่ทั้งชุด)
 //                   ผู้เรียกที่จำ index ของแถวไว้ ต้องหาแถวเดิมใหม่ด้วยลายเซ็น ไม่ใช้ index เดิม
-async function _mergeServerDay(day){
+// light = true -> ขอแบบไม่เอารูปหลักฐานมา ใช้กับ "ตัวเช็คเบื้องหลัง" เท่านั้น
+// [MOBILE-2] ตัวเช็คทุก 60 วิ เรียก merge เมื่อเพื่อนร่วมงานบันทึกเพิ่ม ถ้าดึงรูปมาด้วย
+// จะกินเน็ตมือถือหลาย MB ต่อครั้งโดยไม่จำเป็น เพราะหน้าที่ของมันคือแค่ให้ยอดตรง
+// ส่วนเส้นทางที่จะ "เขียนทับทั้งวัน" ยังใช้แบบเต็ม (มีรูป) ตามเดิม เพื่อความปลอดภัยของข้อมูล
+async function _mergeServerDay(day, light){
   if(!day) return {ok:false, added:0};
   if(!navigator.onLine) return {ok:false, added:0};
   try {
     // ส่ง &date= ไปด้วย เพื่อให้ Apps Script รุ่นใหม่คืนเฉพาะวันเดียว (รุ่นเก่าจะเมินพารามิเตอร์นี้เอง)
-    const res = await fetchTO(GS_URL + '?action=getDaily&token=' + API_TOKEN + '&date=' + encodeURIComponent(day.date), {}, 12000);
+    const res = await fetchTO(GS_URL + '?action=getDaily&token=' + API_TOKEN
+                              + (light ? '&light=1' : '')
+                              + '&date=' + encodeURIComponent(day.date), {}, 12000);
     const j = await readJson(res);
     if(!j || !j.ok || !Array.isArray(j.data)) return {ok:false, added:0};
     const srv = j.data.filter(d => d && d.date && Array.isArray(d.entries))
