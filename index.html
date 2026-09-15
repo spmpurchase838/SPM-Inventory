@@ -1109,7 +1109,7 @@ tbody tr:hover {
 // GitHub Pages เก็บแคชไฟล์ HTML ไว้ที่ CDN ราว 10 นาที และเบราว์เซอร์เก็บซ้ำอีกชั้น
 // หลังอัปโหลดไฟล์ใหม่จึงมักยังเห็นของเก่าอยู่ — เดิมไม่มีทางรู้เลยว่าเห็นเวอร์ชันไหน
 // ถ้าเลขที่แสดงไม่ตรงกับไฟล์ที่เพิ่งอัปโหลด ให้กด Ctrl+Shift+R (หรือ Cmd+Shift+R บน Mac)
-const APP_VERSION = 'v45';
+const APP_VERSION = 'v46';
 const APP_BUILD   = '14 ก.ย. 2569';
 (function _paintVersion(){
   const set = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
@@ -1267,8 +1267,8 @@ const UNIT_OPTIONS = [
   {value:'bigbag',  label:'บิ๊กแบ็ค (Bigbag) ≈ 1,000 กก.', group:'เหมาน้ำหนัก'},
   {value:'บิ๊กแบ็ค (กรอก กก.)', label:'บิ๊กแบ็ค (กรอกน้ำหนักเอง)', group:'เหมาน้ำหนัก'},   // [WPU-2]
   {value:'ตัน',     label:'ตัน (1,000 กก.)',               group:'เหมาน้ำหนัก'},
-  {value:'เบาท์',   label:'เบาท์ (Bulk)',                  group:'ต้องกรอก กก./หน่วย เอง'},
-  {value:'ถัง',     label:'ถัง',                           group:'ต้องกรอก กก./หน่วย เอง'},
+  {value:'เบาท์',   label:'เบาท์ (Bulk) — กรอกน้ำหนักเอง',  group:'ต้องกรอก กก./หน่วย เอง'},
+  {value:'ถัง',     label:'ถัง — กรอกน้ำหนักเอง',           group:'ต้องกรอก กก./หน่วย เอง'},
 ];
 // ลำดับกลุ่มที่จะแสดง — กลุ่มที่ใช้บ่อยอยู่บน
 const UNIT_GROUP_ORDER = ['น้ำหนักตรง','นับเป็นกระสอบ','นับเป็นเลท','เหมาน้ำหนัก','ต้องกรอก กก./หน่วย เอง'];
@@ -4335,22 +4335,21 @@ function _seExtraHtml(itemId, i, s){
   // เดิมเป็นข้อความสีเทาจาง ๆ ตัวเล็ก อยู่บรรทัดล่าง มองข้ามได้ง่ายมาก
   // ถ้าไม่กรอก ยอด กก. ของแถวนั้นคิดไม่ได้ และหายไปจากยอดรวมแบบเงียบ ๆ
   // จึงทำเป็นกล่องเด่น + เปลี่ยนเป็นสีเหลืองเตือนเมื่อยังว่าง
-  if(_WPU_UNITS[s.unit]){   // [Fix V9-7] กระสอบ / ลูก / ถัง / เบาท์
+  if(_WPU_UNITS[s.unit]){   // [Fix V9-7] กระสอบ / ลูก / บิ๊กแบ็ค(กรอกเอง) / ถัง / เบาท์
     const filled = toNum(s.kgPerUnit) > 0;
-    const box = filled
-      ? 'background:var(--tint);border:1px solid #cfe0f2'
-      : 'background:#fff8e8;border:1px solid #f0d9a8';
-    const lbl = filled ? 'var(--ink-2)' : '#8a5a00';
-    return '<span style="display:inline-flex;align-items:center;gap:7px;flex-wrap:wrap;'
-      + box + ';border-radius:6px;padding:6px 11px">'
-      + '<span style="font-size:12px;font-weight:600;color:' + lbl + ';white-space:nowrap">'
+    const bid = itemId + '_' + i;
+    return '<span id="se_wpubox_' + bid + '" style="display:inline-flex;align-items:center;gap:7px;flex-wrap:wrap;'
+      + _seWpuBoxStyle(filled) + ';border-radius:6px;padding:6px 11px">'
+      + '<span id="se_wpulbl_' + bid + '" style="font-size:12px;font-weight:600;color:'
+      + (filled ? 'var(--ink-2)' : '#8a5a00') + ';white-space:nowrap">'
       + (filled ? '' : '\u26a0 ') + escHtml(_WPU_UNITS[s.unit]) + '</span>'
-      + '<input class="se-wpu" type="number" min="0" step="any" placeholder="เช่น 50"'
+      + '<input class="se-wpu" id="se_wpuinp_' + bid + '" type="number" min="0" step="any" placeholder="เช่น 50"'
       + ' value="' + escHtml(numAttr(s.kgPerUnit)) + '"'   // [Fix V11-1]
       + ' style="width:86px;padding:6px 9px;border:1px solid ' + (filled ? '#cfe0f2' : '#e0b870')
       + ';border-radius:4px;font-size:13px;font-weight:600;background:#fff;font-family:inherit"'
-      + ' oninput="updateSE(' + itemId + ',' + i + ',\'kgPerUnit\',this.value);_sePaintExtra(' + itemId + ',' + i + ');_updateSERowPreview(' + itemId + ',' + i + ')">'
-      + (filled ? '' : '<span style="font-size:11px;color:#8a5a00">ต้องกรอก ไม่งั้นยอด กก. จะคิดไม่ได้</span>')
+      + ' oninput="updateSE(' + itemId + ',' + i + ',\'kgPerUnit\',this.value);_seSyncWpu(' + itemId + ',' + i + ');_updateSERowPreview(' + itemId + ',' + i + ')">'
+      + '<span id="se_wpuhint_' + bid + '" style="font-size:11px;color:#8a5a00">'
+      + (filled ? '' : 'ต้องกรอก ไม่งั้นยอด กก. จะคิดไม่ได้') + '</span>'
       + '</span>';
   }
   if(_FIXED_WPU[s.unit]){   // [V19-1]
@@ -4359,23 +4358,46 @@ function _seExtraHtml(itemId, i, s){
   return '';
 }
 
-// [MOBILE-8] วาดกล่อง กก./หน่วย ใหม่เมื่อค่าเปลี่ยน (สีเตือนจะได้หายทันทีที่กรอก)
-// วาดเฉพาะกล่องนี้ แล้วคืนโฟกัส + ตำแหน่งเคอร์เซอร์ให้ช่องเดิม ไม่งั้นพิมพ์ต่อไม่ได้
+// [WPU-3] สีของกล่อง กก./หน่วย — เหลืองเมื่อยังไม่กรอก ฟ้าเมื่อกรอกแล้ว
+function _seWpuBoxStyle(filled){
+  return filled ? 'background:var(--tint);border:1px solid #cfe0f2'
+                : 'background:#fff8e8;border:1px solid #f0d9a8';
+}
+
+// [WPU-3] อัปเดตสีกล่องแบบ "ไม่วาด input ใหม่" — แก้บั๊กเคอร์เซอร์เด้งกลับตัวแรก
+//
+// เดิมตอนพิมพ์ ผมวาดกล่องทั้งก้อนใหม่แล้วพยายามคืนตำแหน่งเคอร์เซอร์ด้วย selectionStart
+// แต่ <input type="number"> ไม่รองรับ selectionStart (เบราว์เซอร์คืน null หรือโยน error)
+// ค่าที่ได้จึงเป็น null -> setSelectionRange(null,null) -> เคอร์เซอร์ไปอยู่ตำแหน่ง 0
+// ผลคือพิมพ์ได้ทีละตัวแล้วเด้งกลับหน้าสุดทุกครั้ง
+//
+// ทางแก้ที่ถูกคือ "อย่าแตะ input เลย" เปลี่ยนแค่สีกรอบกับข้อความรอบ ๆ
+function _seSyncWpu(itemId, i){
+  const st = (window._seStocks[itemId] || [])[i];
+  if(!st) return;
+  const bid  = itemId + '_' + i;
+  const box  = document.getElementById('se_wpubox_' + bid);
+  const lbl  = document.getElementById('se_wpulbl_' + bid);
+  const inp  = document.getElementById('se_wpuinp_' + bid);
+  const hint = document.getElementById('se_wpuhint_' + bid);
+  if(!box) return;   // [Fix V11-2] อาจถูกเรียกหลังออกจากหน้านี้ไปแล้ว
+  const filled = toNum(st.kgPerUnit) > 0;
+  box.setAttribute('style', 'display:inline-flex;align-items:center;gap:7px;flex-wrap:wrap;'
+    + _seWpuBoxStyle(filled) + ';border-radius:6px;padding:6px 11px');
+  if(lbl){
+    lbl.style.color = filled ? 'var(--ink-2)' : '#8a5a00';
+    lbl.textContent = (filled ? '' : '\u26a0 ') + (_WPU_UNITS[st.unit] || '');
+  }
+  if(inp)  inp.style.borderColor = filled ? '#cfe0f2' : '#e0b870';
+  if(hint) hint.textContent = filled ? '' : 'ต้องกรอก ไม่งั้นยอด กก. จะคิดไม่ได้';
+}
+
+// วาดช่องใต้แถวใหม่ทั้งก้อน — ใช้เฉพาะตอน "เปลี่ยนหน่วย" เท่านั้น ไม่ใช่ตอนพิมพ์
 function _sePaintExtra(itemId, i){
   const el = document.getElementById('se_extra_' + itemId + '_' + i);
   const st = (window._seStocks[itemId] || [])[i];
-  if(!el || !st) return;   // [Fix V11-2] อาจถูกเรียกหลังออกจากหน้านี้ไปแล้ว
-  const old = el.querySelector('input.se-wpu');
-  const keep = old && document.activeElement === old;
-  const pos = keep ? old.selectionStart : null;
+  if(!el || !st) return;   // [Fix V11-2]
   el.innerHTML = _seExtraHtml(itemId, i, st);
-  if(keep){
-    const now = el.querySelector('input.se-wpu');
-    if(now){
-      now.focus();
-      try { now.setSelectionRange(pos, pos); } catch(e){}
-    }
-  }
 }
 
 // [Fix 1.2] อธิบายให้ชัดว่าโหมด "แทนที่ยอดเดิม" จะทำอะไรกับยอดสะสม
