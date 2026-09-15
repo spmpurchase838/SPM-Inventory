@@ -511,9 +511,12 @@ td { padding: 8px 12px; vertical-align: middle; }
   grid-template-columns: 1fr 1fr 90px 80px 28px;
   gap: 6px; margin-bottom: 6px;
 }
+/* [MOBILE-3] จำนวน | หน่วย | เศษ | Location | หมายเหตุ | ลบ
+   ตัดช่อง "สถานที่จัดเก็บ" ออก และย้ายช่องเศษขึ้นมาอยู่ในแถวเดียวกัน */
 .stock-row.stock-row-note {
-  grid-template-columns: 1fr 1fr 90px 70px 1.3fr 28px;
+  grid-template-columns: 90px 130px 150px 1fr 1.2fr 28px;
 }
+.se-rem { display: flex; align-items: center; gap: 4px; min-width: 0; }
 /* [MOBILE-1] Location รายแถว — ย่อเป็นชิปเมื่อค่าถูกเติมให้แล้ว
    บนมือถือ select ตัวนี้กินความกว้างเต็มบรรทัด = เสียพื้นที่ 1 บรรทัดต่อ 1 แถวกรอก
    ทั้งที่ค่าถูกเติมให้จาก "Location ที่ตรวจวันนี้" อยู่แล้วและไม่ต้องแตะ */
@@ -824,13 +827,23 @@ tbody tr:hover {
   .form-group input, .form-group select, .form-group textarea { font-size: 16px; padding: 10px 11px; }
   .modal { padding: 16px; margin: 0; border-radius: 8px; }
   .modal h2 { font-size: 14px; }
+  /* [MOBILE-3] มือถือ 2 คอลัมน์ เรียงตาม DOM:
+       บรรทัด 1  จำนวน | หน่วย      <- สองช่องที่ต้องพิมพ์ทุกครั้ง อยู่บนสุด
+       บรรทัด 2  เศษ   | Location
+       บรรทัด 3  หมายเหตุ | ปุ่มลบ                                        */
   .stock-row { grid-template-columns: 1fr 1fr; gap: 5px; }
   .stock-row.stock-row-note { grid-template-columns: 1fr 1fr; gap: 5px; }
-  /* [MOBILE-1] ตอนเป็น select (ยังไม่ได้เลือก/กำลังแก้) ให้กินเต็มบรรทัดเหมือนเดิม
+  /* [MOBILE-1] ตอนเป็น select (ยังไม่ได้เลือก/กำลังแก้) ให้กินเต็มบรรทัด
      แต่ตอนเป็นชิปให้อยู่คอลัมน์เดียว จะได้คืนพื้นที่ให้ช่องจำนวน/หน่วย */
   .stock-row > .se-loc.is-select { grid-column: 1 / -1; }
   .stock-row > .se-loc.is-chip   { grid-column: auto; }
   .se-loc-chip { min-height: 40px; font-size: 14px; }
+  /* ช่องเศษบนมือถือ: ตัวเลขแคบ หน่วยยืดเต็มที่เหลือ กดง่ายด้วยนิ้ว */
+  .se-rem input  { width: 64px !important; font-size: 16px !important; min-height: 40px; }
+  .se-rem select { font-size: 16px !important; min-height: 40px; }
+  /* แถวที่ไม่ใช่หน่วยเลท ช่องเศษจะว่าง ไม่ให้มันกินพื้นที่เปล่า ๆ */
+  .stock-row > .se-rem:empty { display: none; }
+  .stock-row > .se-rem:empty + .se-loc.is-chip { grid-column: auto; }
   .se-row-header { display: none !important; }
   .stock-row input, .stock-row select { font-size: 16px; padding: 8px 9px; }
   /* Ensure remove button is a comfortable touch target */
@@ -1085,8 +1098,8 @@ tbody tr:hover {
 // GitHub Pages เก็บแคชไฟล์ HTML ไว้ที่ CDN ราว 10 นาที และเบราว์เซอร์เก็บซ้ำอีกชั้น
 // หลังอัปโหลดไฟล์ใหม่จึงมักยังเห็นของเก่าอยู่ — เดิมไม่มีทางรู้เลยว่าเห็นเวอร์ชันไหน
 // ถ้าเลขที่แสดงไม่ตรงกับไฟล์ที่เพิ่งอัปโหลด ให้กด Ctrl+Shift+R (หรือ Cmd+Shift+R บน Mac)
-const APP_VERSION = 'v36';
-const APP_BUILD   = '7 ก.ย. 2569';
+const APP_VERSION = 'v37';
+const APP_BUILD   = '14 ก.ย. 2569';
 (function _paintVersion(){
   const set = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
   set('appVersion', APP_VERSION);
@@ -3627,7 +3640,7 @@ function getWeightPerUnit(no){
 // [FIX-A4] น้ำหนักต่อหน่วยที่ "ใช้จริง" ในการคำนวณของแถวนั้น (ใช้โชว์ในตารางประวัติ)
 function _rowWpu(e){
   if(e.kgPerUnit && toNum(e.kgPerUnit) > 0) return toNum(e.kgPerUnit);
-  if(_ITEM_WPU_UNITS[e.unit]) return getWeightPerUnit(e.no);   // [LOT-2] กระสอบ / ลูก
+  if(_ITEM_WPU_UNITS[e.unit]) return getWeightPerUnit(e.no);   // [LOT-2] กระสอบ (+ 'ลูก' ของข้อมูลเก่า)
   if(_FIXED_WPU[e.unit]) return _FIXED_WPU[e.unit];   // [V19-1] bigbag / 500 กก.
   if(_LOT_FIXED_KG[e.unit] !== undefined) return _LOT_FIXED_KG[e.unit];   // [LOT-6]
   if(e.unit === 'ตัน' || e.unit === 'ton') return 1000;
@@ -3751,17 +3764,17 @@ function renderStockEdit(container){
           <button class="btn btn-sm btn-primary" onclick="saveStockItem(${r.id}, this)">บันทึก</button>
         </div>
       </div>
-      <div class="se-row-header" style="display:grid;grid-template-columns:1fr 1fr 90px 70px 1.3fr 28px;gap:5px;margin-bottom:4px">
-        <span style="font-size:11px;color:#888">Location</span>
-        <span style="font-size:11px;color:#888">สถานที่จัดเก็บ</span>
+      <div class="se-row-header" style="display:grid;grid-template-columns:90px 130px 150px 1fr 1.2fr 28px;gap:5px;margin-bottom:4px">
         <span style="font-size:11px;color:#888">จำนวน</span>
         <span style="font-size:11px;color:#888">หน่วย</span>
+        <span style="font-size:11px;color:#888">เศษ</span>
+        <span style="font-size:11px;color:#888">Location</span>
         <span style="font-size:11px;color:#888">หมายเหตุ</span>
         <span></span>
       </div>
       <div id="se_${r.id}"></div>
       <div id="semodehint_${r.id}" style="font-size:11px;margin-top:4px"></div>
-      <button type="button" class="btn btn-sm btn-outline" style="margin-top:6px" onclick="addSERow(${r.id})">+ เพิ่มที่เก็บ</button>
+      <button type="button" class="btn btn-sm btn-outline" style="margin-top:6px" onclick="addSERow(${r.id})">+ เพิ่มแถว</button>
       <div style="margin-top:10px;border-top:1px solid #f0f0f0;padding-top:10px">
         <div style="font-size:11px;color:#888;margin-bottom:4px">แนบรูปหลักฐาน (ถ่ายได้หลายรูป เช่น ด้านหน้า/ด้านหลัง)</div>
         <div style="display:flex;align-items:center;gap:8px">
@@ -4052,12 +4065,16 @@ function updateSE(itemId, rowIdx, field, val){
 // (หน้าอัปเดตสต็อกไม่ใช้ทางนี้ เพราะมีกล่องกรอกสูตรของตัวเองที่เช็คก่อนแล้ว)
 const _WPU_UNITS = {'กระสอบ':'กก./กระสอบ', 'ลูก':'กก./ลูก', 'ถัง':'กก./ถัง', 'เบาท์':'กก./เบาท์', 'เลท':'กก./เลท'};
 // [LOT-2] หน่วยที่น้ำหนักต่อหน่วยมาจากคอลัมน์ นน./หน่วย ของสินค้าในชีต Item
+// 'ลูก' ถูกเอาออกจากดรอปดาวน์แล้ว [UNIT-R] แต่ต้องคงไว้ที่นี่เพื่อรองรับแถวเก่าในชีต
 const _ITEM_WPU_UNITS = {'กระสอบ': true, 'ลูก': true};
 // [V20-1] กล่องกรอกสูตรเลท + เศษ — วางในช่อง se_extra ที่เดิมใช้โชว์ กก./หน่วย
 // ตั้งใจไม่ re-render กล่องนี้ตอนพิมพ์ (จะทำให้ช่องหลุดโฟกัส) อัปเดตแค่ข้อความ hint กับบรรทัดยอดรวม
 // [LOT-2] กล่องเลท: ช่อง "กก./เลท" (ตั้งต้น 500) + ช่องเศษนับเป็นลูก
-// ค่า lotRemU: 'luk' = เศษเป็นลูก | 'kg' = เศษเป็นกิโล
-// ข้อมูลเก่าที่บันทึกไว้เป็น 'bag' ถือเป็น 'luk' (กลไกเดียวกัน คือคิดจากน้ำหนักต่อใบ)
+// ค่า lotRemU (เก็บในหน่วยความจำฝั่งเว็บเท่านั้น ไม่ได้บันทึกลงชีต):
+//   'luk' = เศษนับเป็นกระสอบ (คิดจาก นน./หน่วย ของสินค้า)  |  'kg' = เศษนับเป็นกิโล
+// ชื่อค่า 'luk' เป็นชื่อเดิมจากตอนที่หน่วยยังเรียกว่า "ลูก" — [UNIT-R] เปลี่ยนป้ายเป็น
+// "กระสอบ" แล้ว แต่คงชื่อค่าไว้เพื่อไม่ต้องแตะหลายจุดโดยไม่จำเป็น
+// ข้อมูลเก่าที่เคยเป็น 'bag' ก็ถือเป็น 'luk' (กลไกเดียวกัน คือคิดจากน้ำหนักต่อใบ)
 function _lotRemUOf(s){ return (s && s.lotRemU === 'kg') ? 'kg' : 'luk'; }
 
 // ข้อความข้างช่อง กก./เลท — บอกทั้งน้ำหนักเลท และว่า 1 เลทเท่ากับกี่ลูก
@@ -4122,44 +4139,52 @@ window._seCloseLoc = function(itemId, i){
   _sePaintLoc(itemId, i);
 };
 
+// ===== [MOBILE-3] ช่องเศษแบบอยู่ในแถวเดียวกัน =====
+// โผล่เฉพาะหน่วยเลท หน่วยอื่นเป็นช่องว่างไว้ (คงจำนวนคอลัมน์ของ grid ให้เท่ากันทุกแถว
+// ไม่งั้นแถวจะเหลื่อมกันเวลามีหลายแถวในสินค้าเดียว)
+function _seRemHtml(itemId, i, s){
+  if(!_isLotUnit(s.unit)) return '';
+  const item = db.find(x => x.id === itemId);
+  const no   = item ? item.no : '';
+  const f    = _parseLotFormula(s.lotF);
+  const each = _lotRemKgEach(no, f);
+  const remU = _lotRemUOf(s);
+  const inp  = 'padding:6px 7px;border:1px solid #cfe0f2;border-radius:4px;font-size:12px;font-family:inherit;background:var(--tint);min-width:0';
+  return '<input type="number" min="0" step="any" value="' + escHtml(numAttr(s.lotRem)) + '" placeholder="เศษ"'
+       + ' title="จำนวนที่เหลือไม่เต็มเลท" style="width:56px;' + inp + '"'
+       + ' oninput="updateSE(' + itemId + ',' + i + ',\'lotRem\',this.value);_seRefreshLot(' + itemId + ',' + i + ')">'
+       + '<select style="' + inp + ';flex:1" title="หน่วยของเศษ"'
+       + ' onchange="updateSE(' + itemId + ',' + i + ',\'lotRemU\',this.value);_seRefreshLot(' + itemId + ',' + i + ')">'
+       + '<option value="luk"' + (remU === 'luk' ? ' selected' : '') + (each ? '' : ' disabled') + '>กระสอบ</option>'
+       + '<option value="kg"'  + (remU === 'kg'  ? ' selected' : '') + '>กก.</option>'
+       + '</select>';
+}
+
 function _lotBoxHtml(itemId, i, s){
   const item = db.find(x => x.id === itemId);
   const no   = item ? item.no : '';
   const f    = _parseLotFormula(s.lotF);
-  const remU = _lotRemUOf(s);
   const each = _lotRemKgEach(no, f);
   const inp  = 'padding:4px 7px;border:1px solid #cfe0f2;border-radius:4px;font-size:12px;font-family:inherit';
 
-  // [LOT-6] หน่วยเลทน้ำหนักคงที่ (เช่น "เลท (500 กก.)") -> ไม่มีช่องกรอกน้ำหนัก
-  // ชื่อหน่วยบอกน้ำหนักอยู่แล้ว เหลือให้กรอกแค่ช่องเศษ จะได้ไม่มีอะไรให้กรอกผิด
-  // หน่วย "เลท" ธรรมดา -> ช่องกรอกสูตรเหมือน v20 เดิมทุกอย่าง
+  // [MOBILE-3] ช่องเศษย้ายขึ้นไปอยู่ในแถวแล้ว ที่นี่เหลือแค่ข้อมูลของเลท
+  // หน่วยน้ำหนักคงที่ -> เป็นข้อความอย่างเดียว | หน่วยเลทกรอกสูตร -> มีช่องให้กรอก
   const fixedKg = _lotUnitKg(s.unit);
-  let head;
   if(fixedKg !== undefined){
-    head = '<span style="font-size:11px;color:var(--ink-3)">' + fixedKg.toLocaleString() + ' กก./เลท'
+    return '<span style="font-size:11px;color:var(--ink-3)">' + fixedKg.toLocaleString() + ' กก./เลท'
          + (each > 0 ? ('  \u00b7  1 เลท = ' + Number((fixedKg / each).toFixed(2)).toLocaleString() + ' กระสอบ') : '')
          + '</span>';
-  } else {
-    const bad = String(s.lotF || '').trim() !== '' && !f;
-    head = '<label style="font-size:11px;color:var(--ink-2);display:flex;align-items:center;gap:5px">สูตร/เลท:'
-      + '<input value="' + escHtml(s.lotF || '') + '" placeholder="50x48"'
-      + ' title="กก./กระสอบ \u00d7 จำนวนกระสอบต่อเลท เช่น 50x48 \u2014 หรือใส่เลขเดี่ยวเป็น กก./เลท"'
-      + ' style="width:86px;' + inp + (bad ? ';border-color:#e8b4b4;background:#fdf4f4' : '') + '"'
-      + ' oninput="updateSE(' + itemId + ',' + i + ',\'lotF\',this.value);_seRefreshLot(' + itemId + ',' + i + ')"></label>'
-      + '<span id="se_lothint_' + itemId + '_' + i + '" style="font-size:11px;color:'
-      + (bad ? 'var(--red)' : 'var(--ink-3)') + '">' + escHtml(_lotHintText(no, s)) + '</span>';
   }
-
-  return '<span style="display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--tint);border:1px solid #cfe0f2;border-radius:6px;padding:5px 10px">'
-    + head
-    + '<label style="font-size:11px;color:var(--ink-2);display:flex;align-items:center;gap:5px">เศษ:'
-    + '<input type="number" min="0" step="any" value="' + escHtml(numAttr(s.lotRem)) + '" placeholder="0" style="width:64px;' + inp + '"'
-    + ' oninput="updateSE(' + itemId + ',' + i + ',\'lotRem\',this.value);_seRefreshLot(' + itemId + ',' + i + ')"></label>'
-    + '<select style="' + inp + '" onchange="updateSE(' + itemId + ',' + i + ',\'lotRemU\',this.value);_seRefreshLot(' + itemId + ',' + i + ')">'
-    // ปิดตัวเลือก "ลูก" ถ้ายังไม่รู้ว่า 1 ลูกหนักเท่าไหร่ (สินค้ายังไม่ตั้ง นน./หน่วย ในชีต)
-    + '<option value="luk"' + (remU === 'luk' ? ' selected' : '') + (each ? '' : ' disabled') + '>กระสอบ</option>'
-    + '<option value="kg"'  + (remU === 'kg'  ? ' selected' : '') + '>กก.</option>'
-    + '</select></span>';
+  const bad = String(s.lotF || '').trim() !== '' && !f;
+  return '<span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap">'
+    + '<label style="font-size:11px;color:var(--ink-2);display:flex;align-items:center;gap:5px">สูตร/เลท:'
+    + '<input value="' + escHtml(s.lotF || '') + '" placeholder="50x48"'
+    + ' title="กก./กระสอบ \u00d7 จำนวนกระสอบต่อเลท เช่น 50x48 \u2014 หรือใส่เลขเดี่ยวเป็น กก./เลท"'
+    + ' style="width:86px;' + inp + (bad ? ';border-color:#e8b4b4;background:#fdf4f4' : '') + '"'
+    + ' oninput="updateSE(' + itemId + ',' + i + ',\'lotF\',this.value);_seRefreshLot(' + itemId + ',' + i + ')"></label>'
+    + '<span id="se_lothint_' + itemId + '_' + i + '" style="font-size:11px;color:'
+    + (bad ? 'var(--red)' : 'var(--ink-3)') + '">' + escHtml(_lotHintText(no, s)) + '</span>'
+    + '</span>';
 }
 
 function _seRefreshLot(itemId, i){
@@ -4185,6 +4210,15 @@ function _seRefreshLot(itemId, i){
   _updateSERowPreview(itemId, i);
 }
 
+// [MOBILE-3] ช่องเศษอยู่ในแถวแล้ว ต้องวาดใหม่เองเมื่อเปลี่ยนหน่วย
+// (โผล่เมื่อเป็นหน่วยเลท / หายไปเมื่อเป็นหน่วยอื่น)
+function _sePaintRem(itemId, i){
+  const el = document.getElementById('se_rem_'+itemId+'_'+i);
+  const s  = (window._seStocks[itemId] || [])[i];
+  if(!el || !s) return;   // [Fix V11-2] อาจถูกเรียกหลังออกจากหน้านี้ไปแล้ว
+  el.innerHTML = _seRemHtml(itemId, i, s);
+}
+
 function _seRowUnitChanged(itemId, i, unit){
   updateSE(itemId, i, 'unit', unit);
   const extra = document.getElementById('se_extra_'+itemId+'_'+i);
@@ -4197,9 +4231,11 @@ function _seRowUnitChanged(itemId, i, unit){
     if(_fx0 !== undefined) _row.lotF = String(_fx0);
     if(!_row.lotRemU) _row.lotRemU = 'luk';
     extra.innerHTML = _lotBoxHtml(itemId, i, _row);
+    _sePaintRem(itemId, i);   // [MOBILE-3] โชว์ช่องเศษ
     _seRefreshLot(itemId, i);
     return;
   }
+  _sePaintRem(itemId, i);   // [MOBILE-3] หน่วยอื่น -> ซ่อนช่องเศษ
   if(_WPU_UNITS[unit]){
     // เติมค่าเริ่มต้นจาก นน./หน่วย ของสินค้าให้เฉพาะกระสอบ (ถัง/เบาท์ ไม่มีค่ามาตรฐาน)
     // [Fix V11-1] normalize ด้วย numAttr() ก่อน ไม่งั้นค่าที่มีคอมม่า (1,200) จะโชว์เป็นช่องว่าง
@@ -4322,10 +4358,13 @@ function _renderSERows(itemId){
   container.innerHTML = stocks.map((s,i) => {
     return '<div style="margin-bottom:6px">'
       + '<div class="stock-row stock-row-note" style="margin-bottom:3px">'
-      + '<span class="'+_seLocClass(itemId,i,s)+'" id="se_loc_'+itemId+'_'+i+'">'+_seLocHtml(itemId,i,s)+'</span>'   // [MOBILE-1]
-      + '<input placeholder="สถานที่จัดเก็บ" value="'+escHtml(s.loc||'')+'" oninput="updateSE('+itemId+','+i+',\'loc\',this.value)">'
+      // [MOBILE-3] เรียงตามลำดับที่ใช้จริง: จำนวน -> หน่วย -> เศษ -> Location -> หมายเหตุ
+      // สองช่องแรกคือช่องที่ต้องพิมพ์ทุกครั้ง จึงอยู่บรรทัดบนสุดบนมือถือ
+      // ส่วน Location ถูกเติมให้อยู่แล้ว (ชิป) จึงถอยไปอยู่หลัง
       + '<input placeholder="จำนวน" type="number" min="0" step="any" value="'+escHtml(numAttr(s.qty))+'" oninput="updateSE('+itemId+','+i+',\'qty\',this.value);_updateSERowPreview('+itemId+','+i+')">'   // [Fix V11-1]
       + '<select onchange="_seRowUnitChanged('+itemId+','+i+',this.value)">'+_unitOptionsHtml(s.unit||'')+'</select>'
+      + '<span class="se-rem" id="se_rem_'+itemId+'_'+i+'">'+_seRemHtml(itemId,i,s)+'</span>'   // [MOBILE-3] ช่องเศษย้ายขึ้นมาอยู่ในแถว
+      + '<span class="'+_seLocClass(itemId,i,s)+'" id="se_loc_'+itemId+'_'+i+'">'+_seLocHtml(itemId,i,s)+'</span>'   // [MOBILE-1]
       + '<input placeholder="หมายเหตุ (ถ้ามี)" value="'+escHtml(s.note||'')+'" oninput="updateSE('+itemId+','+i+',\'note\',this.value)">'
       + '<button class="btn-remove" onclick="removeSERow('+itemId+','+i+')" type="button">×</button>'
       + '</div>'
