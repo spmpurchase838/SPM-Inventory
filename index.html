@@ -853,6 +853,8 @@ tbody tr:hover {
   /* [MOBILE-6] ช่องเศษบนมือถือ: ไม่มีดรอปดาวน์แล้ว จึงไม่ต้องกินเต็มบรรทัด
      อยู่คอลัมน์เดียวพอ เหลือที่ให้ช่องอื่น */
   .se-rem input { width: 72px !important; font-size: 16px !important; min-height: 42px; }
+  /* [MOBILE-8] ช่อง กก./หน่วย — font 16px กัน iOS ซูมเอง และสูงพอให้กดด้วยนิ้ว */
+  .se-wpu { font-size: 16px !important; min-height: 42px; width: 100px !important; }
   .se-row-header { display: none !important; }
   .stock-row input, .stock-row select { font-size: 16px; padding: 8px 9px; }
   /* Ensure remove button is a comfortable touch target */
@@ -1107,7 +1109,7 @@ tbody tr:hover {
 // GitHub Pages เก็บแคชไฟล์ HTML ไว้ที่ CDN ราว 10 นาที และเบราว์เซอร์เก็บซ้ำอีกชั้น
 // หลังอัปโหลดไฟล์ใหม่จึงมักยังเห็นของเก่าอยู่ — เดิมไม่มีทางรู้เลยว่าเห็นเวอร์ชันไหน
 // ถ้าเลขที่แสดงไม่ตรงกับไฟล์ที่เพิ่งอัปโหลด ให้กด Ctrl+Shift+R (หรือ Cmd+Shift+R บน Mac)
-const APP_VERSION = 'v41';
+const APP_VERSION = 'v42';
 const APP_BUILD   = '14 ก.ย. 2569';
 (function _paintVersion(){
   const set = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
@@ -4322,15 +4324,52 @@ function _updateSERowPreview(itemId, i){
 
 function _seExtraHtml(itemId, i, s){
   if(_isLotUnit(s.unit)) return _lotBoxHtml(itemId, i, s);   // [V20-1]/[LOT-6]
-  if(_WPU_UNITS[s.unit]){   // [Fix V9-7] กระสอบ / ถัง / เบาท์
-    return '<label style="font-size:11px;color:#888;display:flex;align-items:center;gap:5px">'+escHtml(_WPU_UNITS[s.unit])+':'
-      + '<input type="number" min="0" step="any" placeholder="เช่น 50" value="'+escHtml(numAttr(s.kgPerUnit))+'" style="width:90px;padding:4px 7px;border:1px solid var(--rule);border-radius:4px;font-size:12px"'   // [Fix V11-1]
-      + ' oninput="updateSE('+itemId+','+i+',\'kgPerUnit\',this.value);_updateSERowPreview('+itemId+','+i+')"></label>';
+
+  // [MOBILE-8] ช่อง "กก. ต่อ 1 หน่วย" — สินค้าที่ไม่ได้ตั้ง นน./หน่วย ในชีตต้องกรอกเอง
+  // เดิมเป็นข้อความสีเทาจาง ๆ ตัวเล็ก อยู่บรรทัดล่าง มองข้ามได้ง่ายมาก
+  // ถ้าไม่กรอก ยอด กก. ของแถวนั้นคิดไม่ได้ และหายไปจากยอดรวมแบบเงียบ ๆ
+  // จึงทำเป็นกล่องเด่น + เปลี่ยนเป็นสีเหลืองเตือนเมื่อยังว่าง
+  if(_WPU_UNITS[s.unit]){   // [Fix V9-7] กระสอบ / ลูก / ถัง / เบาท์
+    const filled = toNum(s.kgPerUnit) > 0;
+    const box = filled
+      ? 'background:var(--tint);border:1px solid #cfe0f2'
+      : 'background:#fff8e8;border:1px solid #f0d9a8';
+    const lbl = filled ? 'var(--ink-2)' : '#8a5a00';
+    return '<span style="display:inline-flex;align-items:center;gap:7px;flex-wrap:wrap;'
+      + box + ';border-radius:6px;padding:6px 11px">'
+      + '<span style="font-size:12px;font-weight:600;color:' + lbl + ';white-space:nowrap">'
+      + (filled ? '' : '\u26a0 ') + escHtml(_WPU_UNITS[s.unit]) + '</span>'
+      + '<input class="se-wpu" type="number" min="0" step="any" placeholder="เช่น 50"'
+      + ' value="' + escHtml(numAttr(s.kgPerUnit)) + '"'   // [Fix V11-1]
+      + ' style="width:86px;padding:6px 9px;border:1px solid ' + (filled ? '#cfe0f2' : '#e0b870')
+      + ';border-radius:4px;font-size:13px;font-weight:600;background:#fff;font-family:inherit"'
+      + ' oninput="updateSE(' + itemId + ',' + i + ',\'kgPerUnit\',this.value);_sePaintExtra(' + itemId + ',' + i + ');_updateSERowPreview(' + itemId + ',' + i + ')">'
+      + (filled ? '' : '<span style="font-size:11px;color:#8a5a00">ต้องกรอก ไม่งั้นยอด กก. จะคิดไม่ได้</span>')
+      + '</span>';
   }
   if(_FIXED_WPU[s.unit]){   // [V19-1]
     return '<span style="font-size:11px;color:#888">'+escHtml(_FIXED_WPU_NOTE[s.unit])+'</span>';
   }
   return '';
+}
+
+// [MOBILE-8] วาดกล่อง กก./หน่วย ใหม่เมื่อค่าเปลี่ยน (สีเตือนจะได้หายทันทีที่กรอก)
+// วาดเฉพาะกล่องนี้ แล้วคืนโฟกัส + ตำแหน่งเคอร์เซอร์ให้ช่องเดิม ไม่งั้นพิมพ์ต่อไม่ได้
+function _sePaintExtra(itemId, i){
+  const el = document.getElementById('se_extra_' + itemId + '_' + i);
+  const st = (window._seStocks[itemId] || [])[i];
+  if(!el || !st) return;   // [Fix V11-2] อาจถูกเรียกหลังออกจากหน้านี้ไปแล้ว
+  const old = el.querySelector('input.se-wpu');
+  const keep = old && document.activeElement === old;
+  const pos = keep ? old.selectionStart : null;
+  el.innerHTML = _seExtraHtml(itemId, i, st);
+  if(keep){
+    const now = el.querySelector('input.se-wpu');
+    if(now){
+      now.focus();
+      try { now.setSelectionRange(pos, pos); } catch(e){}
+    }
+  }
 }
 
 // [Fix 1.2] อธิบายให้ชัดว่าโหมด "แทนที่ยอดเดิม" จะทำอะไรกับยอดสะสม
