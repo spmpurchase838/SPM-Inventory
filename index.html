@@ -1109,7 +1109,7 @@ tbody tr:hover {
 // GitHub Pages เก็บแคชไฟล์ HTML ไว้ที่ CDN ราว 10 นาที และเบราว์เซอร์เก็บซ้ำอีกชั้น
 // หลังอัปโหลดไฟล์ใหม่จึงมักยังเห็นของเก่าอยู่ — เดิมไม่มีทางรู้เลยว่าเห็นเวอร์ชันไหน
 // ถ้าเลขที่แสดงไม่ตรงกับไฟล์ที่เพิ่งอัปโหลด ให้กด Ctrl+Shift+R (หรือ Cmd+Shift+R บน Mac)
-const APP_VERSION = 'v42';
+const APP_VERSION = 'v43';
 const APP_BUILD   = '14 ก.ย. 2569';
 (function _paintVersion(){
   const set = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
@@ -4258,16 +4258,16 @@ function _seRowUnitChanged(itemId, i, unit){
     // [LOT-2] เติม นน./หน่วย ของสินค้าให้ทั้งกระสอบและลูก (กลไกเดียวกัน)
     const prefill = (_ITEM_WPU_UNITS[unit] && item && item.col2) ? numAttr(item.col2) : '';
     updateSE(itemId, i, 'kgPerUnit', prefill||'');
-    extra.innerHTML = '<label style="font-size:11px;color:#888;display:flex;align-items:center;gap:5px">'+escHtml(_WPU_UNITS[unit])+':'
-      + '<input type="number" min="0" step="any" placeholder="เช่น 50" value="'+escHtml(String(prefill||''))+'" style="width:90px;padding:4px 7px;border:1px solid var(--rule);border-radius:4px;font-size:12px"'
-      + ' oninput="updateSE('+itemId+','+i+',\'kgPerUnit\',this.value);_updateSERowPreview('+itemId+','+i+')"></label>'
-      + (unit === 'กระสอบ' ? '' : '<span style="font-size:11px;color:#b9770e;margin-left:6px">ไม่กรอกก็บันทึกได้ แต่ยอดนี้จะไม่ถูกรวมเป็น กก.</span>');
+    // [MOBILE-8b] เดิมตรงนี้เขียน HTML ของช่อง กก./หน่วย เองอีกชุดหนึ่ง แยกจาก _seExtraHtml()
+    // ผลคือแก้หน้าตาที่ _seExtraHtml แล้วไม่มีผล เพราะพอผู้ใช้เลือกหน่วย บรรทัดนี้จะทับด้วยแบบเก่าทันที
+    // ตอนนี้เรียกตัวเดียวกันทั้งสองทาง จะได้ไม่มีวันหลุดกันอีก
+    _sePaintExtra(itemId, i);
   } else if(_FIXED_WPU[unit]){   // [V19-1] bigbag / 500 กก. — น้ำหนักตายตัว ไม่ต้องกรอก
     updateSE(itemId, i, 'kgPerUnit', String(_FIXED_WPU[unit]));
-    extra.innerHTML = '<span style="font-size:11px;color:#888">'+escHtml(_FIXED_WPU_NOTE[unit])+'</span>';
+    _sePaintExtra(itemId, i);
   } else {
     updateSE(itemId, i, 'kgPerUnit', '');
-    extra.innerHTML = '';
+    _sePaintExtra(itemId, i);
   }
   _updateSERowPreview(itemId, i);
 }
