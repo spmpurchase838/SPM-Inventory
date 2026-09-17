@@ -1109,7 +1109,7 @@ tbody tr:hover {
 // GitHub Pages เก็บแคชไฟล์ HTML ไว้ที่ CDN ราว 10 นาที และเบราว์เซอร์เก็บซ้ำอีกชั้น
 // หลังอัปโหลดไฟล์ใหม่จึงมักยังเห็นของเก่าอยู่ — เดิมไม่มีทางรู้เลยว่าเห็นเวอร์ชันไหน
 // ถ้าเลขที่แสดงไม่ตรงกับไฟล์ที่เพิ่งอัปโหลด ให้กด Ctrl+Shift+R (หรือ Cmd+Shift+R บน Mac)
-const APP_VERSION = 'v47';
+const APP_VERSION = 'v48';
 const APP_BUILD   = '14 ก.ย. 2569';
 (function _paintVersion(){
   const set = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
@@ -6120,7 +6120,10 @@ async function undoDelete(){
   // saveStockItem/deleteDailyEntry/saveEditDailyEntry/retryPending ที่อาจเขียนวันเดียวกันอยู่พร้อมกัน
   await withDayWriteLock(async () => {
   // [C-2] merge ก่อน ไม่งั้น undo จะเขียนทับแถวที่เพื่อนร่วมงานเพิ่งเพิ่ม
-  const _mg = await _mergeServerDay(day);
+  // [FAST-3] ขอแบบไม่เอารูปหลักฐานมา — รอบนี้ต้องการแค่ "มีแถวอะไรบ้าง" เพื่อกันทับของเพื่อนร่วมงาน
+  // ไม่ได้ใช้รูปเลย แต่เดิมดึงมาทั้งหมด ทำให้รอนานโดยเปล่าประโยชน์
+  // รูปของแถวที่ไม่ได้แก้ ถูกรักษาไว้ด้วยตาข่ายฝั่ง Apps Script (_snapshotDayImages) อยู่แล้ว
+  const _mg = await _mergeServerDay(day, true);
   // ถ้าแถวนี้ยังอยู่บนชีต (ตอนลบ sync ไม่สำเร็จ) merge จะดึงกลับมาแล้ว ไม่ต้อง push ซ้ำ
   // [Fix V8-2] ต้องคืนแถวไว้ "ตำแหน่งเดิม" ไม่ใช่ต่อท้าย เพราะลำดับใน array มีความหมาย:
   // _entriesForNo() ใช้ลำดับตัดสินว่าธง snap:true (โหมดแทนที่ยอดเดิม) รีเซ็ตยอดสะสมที่จุดไหน
@@ -6225,7 +6228,10 @@ async function deleteDailyEntry(date, entryIdx){
   // ด้านบนกันแค่ delete/edit ชนกันเอง ไม่ครอบคลุมฟังก์ชันอื่นที่เขียนวันเดียวกัน)
   await withDayWriteLock(async () => {
   const _target = day.entries[entryIdx];
-  const _mg = await _mergeServerDay(day);
+  // [FAST-3] ขอแบบไม่เอารูปหลักฐานมา — รอบนี้ต้องการแค่ "มีแถวอะไรบ้าง" เพื่อกันทับของเพื่อนร่วมงาน
+  // ไม่ได้ใช้รูปเลย แต่เดิมดึงมาทั้งหมด ทำให้รอนานโดยเปล่าประโยชน์
+  // รูปของแถวที่ไม่ได้แก้ ถูกรักษาไว้ด้วยตาข่ายฝั่ง Apps Script (_snapshotDayImages) อยู่แล้ว
+  const _mg = await _mergeServerDay(day, true);
   let _idx = day.entries.indexOf(_target);
   // [Fix V8-1] ถ้า merge ยึดข้อมูลบนชีต array จะถูกสร้างใหม่ indexOf จึงหาไม่เจอทั้งที่แถวยังอยู่
   // ต้องหาด้วย "ลายเซ็นแถว" ก่อน และห้ามถอยไปใช้ index เดิมในกรณีนั้น เพราะแถวอาจเลื่อน = ลบผิดแถว
@@ -6540,7 +6546,10 @@ async function saveEditDailyEntry(date, realIdx){
   await withDayWriteLock(async () => {
     // [C-2] merge ของบนชีตก่อน แล้วค่อยหา index ใหม่ของ entry เดิม (merge ทำให้ index เลื่อน)
     const _target = day.entries[realIdx];
-    const _mg = await _mergeServerDay(day);
+    // [FAST-3] ขอแบบไม่เอารูปหลักฐานมา — รอบนี้ต้องการแค่ "มีแถวอะไรบ้าง" เพื่อกันทับของเพื่อนร่วมงาน
+    // ไม่ได้ใช้รูปเลย แต่เดิมดึงมาทั้งหมด ทำให้รอนานโดยเปล่าประโยชน์
+    // รูปของแถวที่ไม่ได้แก้ ถูกรักษาไว้ด้วยตาข่ายฝั่ง Apps Script (_snapshotDayImages) อยู่แล้ว
+    const _mg = await _mergeServerDay(day, true);
     let _idx = day.entries.indexOf(_target);
     // [Fix V8-1] แบบเดียวกับ deleteDailyEntry — หลัง merge แบบยึดข้อมูลบนชีต ต้องหาแถวด้วยลายเซ็น
     // ห้ามถอยไปใช้ index เดิม ไม่งั้นอาจไปแก้ทับแถวอื่นที่เลื่อนมาอยู่ตำแหน่งนั้น
