@@ -1109,7 +1109,7 @@ tbody tr:hover {
 // GitHub Pages เก็บแคชไฟล์ HTML ไว้ที่ CDN ราว 10 นาที และเบราว์เซอร์เก็บซ้ำอีกชั้น
 // หลังอัปโหลดไฟล์ใหม่จึงมักยังเห็นของเก่าอยู่ — เดิมไม่มีทางรู้เลยว่าเห็นเวอร์ชันไหน
 // ถ้าเลขที่แสดงไม่ตรงกับไฟล์ที่เพิ่งอัปโหลด ให้กด Ctrl+Shift+R (หรือ Cmd+Shift+R บน Mac)
-const APP_VERSION = 'v48';
+const APP_VERSION = 'v50';
 const APP_BUILD   = '14 ก.ย. 2569';
 (function _paintVersion(){
   const set = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
@@ -1252,8 +1252,10 @@ function _initSEDefaultLoc(){
 // (ใช้ตอนเปลี่ยน Location ประจำวันกลางคัน จะได้อัปเดตเฉพาะแถวที่ระบบเติม ไม่ทับของที่คนเลือกเอง)
 function _seNewRow(){
   const d = window._seDefaultLoc || '';
-  // lotF / lotRem / lotRemU ใช้เฉพาะหน่วย "เลท" [V20-1] — เป็น state ฝั่งหน้าเว็บ ไม่ได้ส่งขึ้นชีตตรง ๆ
-  return {location: d, _autoLoc: !!d, loc:'', qty:'', unit:'', note:'', kgPerUnit:'', lotF:'', lotRem:'', lotRemU:'bag'};
+  // lotF / lotRem / lotRemU / lotBagKg ใช้เฉพาะหน่วย "เลท" [V20-1] — เป็น state ฝั่งหน้าเว็บ ไม่ได้ส่งขึ้นชีตตรง ๆ
+  // lotBagKg = กก./กระสอบ ที่กรอกเองในแถวนี้ [LOT-7] ใช้ตอนสินค้ายังไม่ได้ตั้ง นน./หน่วย ในชีต
+  return {location: d, _autoLoc: !!d, loc:'', qty:'', unit:'', note:'', kgPerUnit:'',
+          lotF:'', lotRem:'', lotRemU:'bag', lotBagKg:''};
 }
 
 // ===== รายชื่อหน่วยคงที่ ให้เลือกแบบบังคับ ไม่ให้พิมพ์เองอิสระ =====
@@ -1323,7 +1325,13 @@ function _lotUnitKg(u){ return _LOT_FIXED_KG[u]; }
 
 // น้ำหนักต่อกระสอบที่ใช้คิดเศษ — เอาจาก นน./หน่วย ของสินค้าก่อน
 // ถ้าไม่มีแต่กรอกแบบคูณ 50x48 ไว้ ก็ใช้ตัวคูณหน้า (50) เป็น กก./กระสอบ แทน (เข้ากันได้กับข้อมูลเดิม)
-function _lotRemKgEach(no, f){
+// [LOT-7] ลำดับการหา กก./กระสอบ สำหรับคิดเศษ:
+//   1. ค่าที่ผู้ใช้กรอกเองในแถวนี้ (lotBagKg) — กรอกได้ตรงในกล่องเลท ไม่ต้องไปเปลี่ยนหน่วยเป็นกระสอบ
+//   2. คอลัมน์ นน./หน่วย ของสินค้าในชีต Item
+//   3. ตัวคูณหน้าของสูตรแบบ 50x48 (เข้ากันได้กับข้อมูลเดิม)
+function _lotRemKgEach(no, f, s){
+  const typed = s ? toNum(s.lotBagKg) : NaN;
+  if(typed > 0) return typed;
   const w = getWeightPerUnit(no);
   if(w > 0) return w;
   if(f && f.kgPerBag > 0) return f.kgPerBag;
@@ -1352,7 +1360,7 @@ function _lotRemainderRow(s, no){
   const f = _parseLotFormula(s.lotF);
   if(!f) return null;
   const isLuk = _lotRemUOf(s) === 'luk';
-  const each  = isLuk ? _lotRemKgEach(no, f) : 1;
+  const each  = isLuk ? _lotRemKgEach(no, f, s) : 1;
   if(isLuk && !(each > 0)) return null;   // ไม่รู้ กก./กระสอบ (กันไว้แล้วตอน validate ก่อนบันทึก)
   return {
     location: s.location || '', loc: s.loc || '',
@@ -4100,7 +4108,7 @@ function _lotHintText(no, s){
   const f = _parseLotFormula(s.lotF);
   if(!f) return String(s.lotF || '').trim() !== '' ? 'สูตรอ่านไม่ออก' : 'เช่น 50x48';
   let t = '= ' + f.kgPerLot.toLocaleString() + ' กก./เลท';
-  const each = _lotRemKgEach(no, f);
+  const each = _lotRemKgEach(no, f, s);
   if(each > 0){
     const luk = f.kgPerLot / each;
     t += '  \u00b7  1 เลท = ' + Number(luk.toFixed(2)).toLocaleString() + ' กระสอบ';
@@ -4162,49 +4170,65 @@ function _seRemHtml(itemId, i, s){
   const item = db.find(x => x.id === itemId);
   const no   = item ? item.no : '';
   const isLot = _isLotUnit(s.unit);
-  const each  = isLot ? _lotRemKgEach(no, _parseLotFormula(s.lotF)) : null;
-  const inp = 'padding:6px 7px;border:1px solid #cfe0f2;border-radius:4px;font-size:12px;font-family:inherit;min-width:0;width:100%';
+  const each  = isLot ? _lotRemKgEach(no, _parseLotFormula(s.lotF), s) : null;
+  const inp = 'padding:6px 7px;border:1px solid #cfe0f2;border-radius:4px;font-size:12px;font-family:inherit;min-width:0';
 
   // [MOBILE-7] ช่องเศษโผล่ค้างไว้ทุกแถว ไม่หายไปจนเกิดช่องโหว่ในตาราง
-  // หน่วยที่ไม่ใช่เลทไม่มีแนวคิด "เศษ" จึงปิดช่องไว้แทนที่จะซ่อน
-  // ผู้ใช้เห็นว่ามีช่องนี้อยู่ และรู้ว่าต้องเลือกหน่วยเลทก่อนถึงจะกรอกได้
   if(!isLot){
     return '<input disabled placeholder="เศษ" title="ใช้ได้กับหน่วยเลทเท่านั้น"'
-         + ' style="' + inp + ';background:#f4f6f8;color:var(--ink-3);border-style:dashed">';
+         + ' style="' + inp + ';width:100%;background:#f4f6f8;color:var(--ink-3);border-style:dashed">';
   }
-  // [MOBILE-6] เศษนับเป็น "กระสอบ" เสมอ ไม่มีดรอปดาวน์ให้เลือกหน่วย
+  // [LOT-7] เลือกได้ว่าจะกรอกเศษเป็น "กระสอบ" หรือ "กก." ตรง ๆ
+  const remU = _lotRemUOf(s);
   return '<input type="number" min="0" step="any" value="' + escHtml(numAttr(s.lotRem)) + '" placeholder="เศษ"'
-       + ' title="จำนวนกระสอบที่เหลือไม่เต็มเลท" style="' + inp + ';background:var(--tint);flex:0 0 62px;width:62px"'
+       + ' title="จำนวนที่เหลือไม่เต็มเลท" style="' + inp + ';background:var(--tint);flex:0 0 58px;width:58px"'
        + ' oninput="updateSE(' + itemId + ',' + i + ',\'lotRem\',this.value);_seRefreshLot(' + itemId + ',' + i + ')">'
-       + '<span style="font-size:11.5px;color:' + (each > 0 ? 'var(--ink-2)' : 'var(--red)') + ';white-space:nowrap">'
-       + (each > 0 ? 'กระสอบ' : 'กระสอบ ⚠') + '</span>';
+       + '<select style="' + inp + ';flex:1;background:var(--tint)" title="หน่วยของเศษ"'
+       + ' onchange="updateSE(' + itemId + ',' + i + ',\'lotRemU\',this.value);_sePaintRem(' + itemId + ',' + i + ');_sePaintExtra(' + itemId + ',' + i + ');_updateSERowPreview(' + itemId + ',' + i + ')">'
+       + '<option id="se_remopt_' + itemId + '_' + i + '" value="luk"' + (remU === 'luk' ? ' selected' : '')
+       + '>กระสอบ' + (each > 0 ? '' : ' \u26a0') + '</option>'
+       + '<option value="kg"'  + (remU === 'kg'  ? ' selected' : '') + '>กก.</option>'
+       + '</select>';
 }
 
 function _lotBoxHtml(itemId, i, s){
   const item = db.find(x => x.id === itemId);
   const no   = item ? item.no : '';
   const f    = _parseLotFormula(s.lotF);
-  const each = _lotRemKgEach(no, f);
+  const each = _lotRemKgEach(no, f, s);
   const inp  = 'padding:4px 7px;border:1px solid #cfe0f2;border-radius:4px;font-size:12px;font-family:inherit';
 
-  // [MOBILE-3] ช่องเศษย้ายขึ้นไปอยู่ในแถวแล้ว ที่นี่เหลือแค่ข้อมูลของเลท
-  // หน่วยน้ำหนักคงที่ -> เป็นข้อความอย่างเดียว | หน่วยเลทกรอกสูตร -> มีช่องให้กรอก
+  // [LOT-7] ถ้าเศษนับเป็นกระสอบ แต่ระบบยังไม่รู้ว่า 1 กระสอบหนักเท่าไหร่
+  // ให้กรอกได้ตรงนี้เลย ไม่ต้องไปเปลี่ยนหน่วยเป็นกระสอบเพื่อกรอกแล้วเปลี่ยนกลับ
+  // ค่าที่กรอกใช้เฉพาะแถวนี้ ไม่ได้เขียนลงชีต Item (ถ้าอยากให้จำถาวรต้องใส่ในชีต)
+  // [WPU-4] ใช้กล่องกรอกน้ำหนักหน้าตาเดียวกับหน่วยอื่น ๆ จะได้ไม่ต้องจำหลายแบบ
+  let bagBox = '';
+  if(_lotRemUOf(s) === 'luk'){
+    const fromSheet = getWeightPerUnit(no);
+    const val = (toNum(s.lotBagKg) > 0) ? numAttr(s.lotBagKg)
+              : (fromSheet > 0 ? String(fromSheet) : '');
+    bagBox = _wpuFieldHtml('b', itemId, i, 'กก./กระสอบ', val,
+      'updateSE(' + itemId + ',' + i + ',&quot;lotBagKg&quot;,this.value);_seRefreshLot(' + itemId + ',' + i + ')');
+  }
+
+  // [MOBILE-3] ช่องเศษอยู่ในแถวแล้ว ที่นี่เหลือแค่ข้อมูลของเลท
   const fixedKg = _lotUnitKg(s.unit);
+  let head;
   if(fixedKg !== undefined){
-    return '<span style="font-size:11px;color:var(--ink-3)">' + fixedKg.toLocaleString() + ' กก./เลท'
+    head = '<span id="se_lotfx_' + itemId + '_' + i + '" style="font-size:11px;color:var(--ink-3)">' + fixedKg.toLocaleString() + ' กก./เลท'
          + (each > 0 ? ('  \u00b7  1 เลท = ' + Number((fixedKg / each).toFixed(2)).toLocaleString() + ' กระสอบ') : '')
          + '</span>';
+  } else {
+    const bad = String(s.lotF || '').trim() !== '' && !f;
+    head = '<label style="font-size:11px;color:var(--ink-2);display:inline-flex;align-items:center;gap:5px">สูตร/เลท:'
+      + '<input value="' + escHtml(s.lotF || '') + '" placeholder="50x48"'
+      + ' title="กก./กระสอบ \u00d7 จำนวนกระสอบต่อเลท เช่น 50x48 \u2014 หรือใส่เลขเดี่ยวเป็น กก./เลท"'
+      + ' style="width:86px;' + inp + (bad ? ';border-color:#e8b4b4;background:#fdf4f4' : '') + '"'
+      + ' oninput="updateSE(' + itemId + ',' + i + ',\'lotF\',this.value);_seRefreshLot(' + itemId + ',' + i + ')"></label>'
+      + '<span id="se_lothint_' + itemId + '_' + i + '" style="font-size:11px;color:'
+      + (bad ? 'var(--red)' : 'var(--ink-3)') + '">' + escHtml(_lotHintText(no, s)) + '</span>';
   }
-  const bad = String(s.lotF || '').trim() !== '' && !f;
-  return '<span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap">'
-    + '<label style="font-size:11px;color:var(--ink-2);display:flex;align-items:center;gap:5px">สูตร/เลท:'
-    + '<input value="' + escHtml(s.lotF || '') + '" placeholder="50x48"'
-    + ' title="กก./กระสอบ \u00d7 จำนวนกระสอบต่อเลท เช่น 50x48 \u2014 หรือใส่เลขเดี่ยวเป็น กก./เลท"'
-    + ' style="width:86px;' + inp + (bad ? ';border-color:#e8b4b4;background:#fdf4f4' : '') + '"'
-    + ' oninput="updateSE(' + itemId + ',' + i + ',\'lotF\',this.value);_seRefreshLot(' + itemId + ',' + i + ')"></label>'
-    + '<span id="se_lothint_' + itemId + '_' + i + '" style="font-size:11px;color:'
-    + (bad ? 'var(--red)' : 'var(--ink-3)') + '">' + escHtml(_lotHintText(no, s)) + '</span>'
-    + '</span>';
+  return '<span style="display:inline-flex;align-items:center;gap:12px;flex-wrap:wrap">' + head + bagBox + '</span>';
 }
 
 function _seRefreshLot(itemId, i){
@@ -4221,12 +4245,30 @@ function _seRefreshLot(itemId, i){
     s.lotF = String(_fx);
     s.kgPerUnit = String(_fx);
   }
+  // [LOT-7] อัปเดตข้อความ "1 เลท = N กระสอบ" ของหน่วยน้ำหนักคงที่
+  // เขียนทับแค่ textContent ไม่แตะ input จึงไม่ทำให้เคอร์เซอร์เด้ง
+  const fxEl = document.getElementById('se_lotfx_' + itemId + '_' + i);
+  if(fxEl && _fx !== undefined){
+    const eachNow = _lotRemKgEach(_no, f, s);
+    fxEl.textContent = _fx.toLocaleString() + ' กก./เลท'
+      + (eachNow > 0 ? ('  \u00b7  1 เลท = ' + Number((_fx / eachNow).toFixed(2)).toLocaleString() + ' กระสอบ') : '');
+  }
   const hintEl = document.getElementById('se_lothint_' + itemId + '_' + i);
   if(hintEl){
     const bad = String(s.lotF || '').trim() !== '' && !f;
     hintEl.textContent  = _lotHintText(_no, s);
     hintEl.style.color  = bad ? 'var(--red)' : 'var(--ink-3)';
   }
+  // ป้ายเตือนในตัวเลือกหน่วยเศษต้องอัปเดตด้วย (⚠ หายเมื่อกรอก กก./กระสอบ แล้ว)
+  // ห้ามเรียก _sePaintRem ตรงนี้ — ฟังก์ชันนี้ถูกเรียกตอนพิมพ์ช่องเศษด้วย
+  // ถ้าวาดใหม่ input จะถูกสร้างใหม่แล้วเคอร์เซอร์เด้งกลับตัวแรก (บั๊กเดียวกับ [WPU-3])
+  const optEl = document.getElementById('se_remopt_' + itemId + '_' + i);
+  if(optEl){
+    const eachOpt = _lotRemKgEach(_no, f, s);
+    optEl.textContent = 'กระสอบ' + (eachOpt > 0 ? '' : ' \u26a0');
+  }
+  // [WPU-4] กล่อง กก./กระสอบ เปลี่ยนสีทันทีที่กรอก โดยไม่วาด input ใหม่
+  _seSyncWpu('b', itemId, i, 'กก./กระสอบ', _lotRemKgEach(_no, f, s) || '');
   _updateSERowPreview(itemId, i);
 }
 
@@ -4296,7 +4338,7 @@ function _updateSERowPreview(itemId, i){
     const lotKg = r2(qty * f.kgPerLot);
     const rem   = toNum(s.lotRem);
     const isLuk = _lotRemUOf(s) === 'luk';
-    const each  = isLuk ? _lotRemKgEach(_no, f) : 1;
+    const each  = isLuk ? _lotRemKgEach(_no, f, s) : 1;
     let txt = qty.toLocaleString() + ' เลท \u00d7 ' + f.kgPerLot.toLocaleString() + ' กก. = <b style="color:#1a5276">' + lotKg.toLocaleString() + ' กก.</b>';
     let total = lotKg;
     if(rem > 0){
@@ -4311,7 +4353,7 @@ function _updateSERowPreview(itemId, i){
       }
     }
     // [LOT-2] บรรทัดเทียบยอด — หน้างานนับของเป็นลูก ถ้าเลขนี้ไม่ตรงกับที่นับบนพาเลทจะรู้ทันที
-    const _each2 = _lotRemKgEach(_no, f);
+    const _each2 = _lotRemKgEach(_no, f, s);
     if(_each2 > 0 && total > 0){
       const luk = total / _each2;
       txt += '<br><span style="color:#0d6e4b;font-size:11.5px">\ud83e\uddee รวมทั้งหมด <b>'
@@ -4336,21 +4378,9 @@ function _seExtraHtml(itemId, i, s){
   // ถ้าไม่กรอก ยอด กก. ของแถวนั้นคิดไม่ได้ และหายไปจากยอดรวมแบบเงียบ ๆ
   // จึงทำเป็นกล่องเด่น + เปลี่ยนเป็นสีเหลืองเตือนเมื่อยังว่าง
   if(_WPU_UNITS[s.unit]){   // [Fix V9-7] กระสอบ / ลูก / บิ๊กแบ็ค(กรอกเอง) / ถัง / เบาท์
-    const filled = toNum(s.kgPerUnit) > 0;
-    const bid = itemId + '_' + i;
-    return '<span id="se_wpubox_' + bid + '" style="display:inline-flex;align-items:center;gap:7px;flex-wrap:wrap;'
-      + _seWpuBoxStyle(filled) + ';border-radius:6px;padding:6px 11px">'
-      + '<span id="se_wpulbl_' + bid + '" style="font-size:12px;font-weight:600;color:'
-      + (filled ? 'var(--ink-2)' : '#8a5a00') + ';white-space:nowrap">'
-      + (filled ? '' : '\u26a0 ') + escHtml(_WPU_UNITS[s.unit]) + '</span>'
-      + '<input class="se-wpu" id="se_wpuinp_' + bid + '" type="number" min="0" step="any" placeholder="เช่น 50"'
-      + ' value="' + escHtml(numAttr(s.kgPerUnit)) + '"'   // [Fix V11-1]
-      + ' style="width:86px;padding:6px 9px;border:1px solid ' + (filled ? '#cfe0f2' : '#e0b870')
-      + ';border-radius:4px;font-size:13px;font-weight:600;background:#fff;font-family:inherit"'
-      + ' oninput="updateSE(' + itemId + ',' + i + ',\'kgPerUnit\',this.value);_seSyncWpu(' + itemId + ',' + i + ');_updateSERowPreview(' + itemId + ',' + i + ')">'
-      + '<span id="se_wpuhint_' + bid + '" style="font-size:11px;color:#8a5a00">'
-      + (filled ? '' : 'ต้องกรอก ไม่งั้นยอด กก. จะคิดไม่ได้') + '</span>'
-      + '</span>';
+    return _wpuFieldHtml('u', itemId, i, _WPU_UNITS[s.unit], s.kgPerUnit,
+      'updateSE(' + itemId + ',' + i + ',&quot;kgPerUnit&quot;,this.value);'
+      + '_seSyncWpuUnit(' + itemId + ',' + i + ');_updateSERowPreview(' + itemId + ',' + i + ')');
   }
   if(_FIXED_WPU[s.unit]){   // [V19-1]
     return '<span style="font-size:11px;color:#888">'+escHtml(_FIXED_WPU_NOTE[s.unit])+'</span>';
@@ -4364,6 +4394,30 @@ function _seWpuBoxStyle(filled){
                 : 'background:#fff8e8;border:1px solid #f0d9a8';
 }
 
+// ============================================================================
+// [WPU-4] กล่องกรอกน้ำหนัก — ใช้หน้าตาเดียวกันทุกหน่วย จะได้ไม่ต้องจำว่าแต่ละหน่วยอยู่ตรงไหน
+//   key 'u' = น้ำหนักต่อหน่วยของแถว (กระสอบ / ลูก / ถัง / เบาท์ / บิ๊กแบ็คกรอกเอง)
+//   key 'b' = น้ำหนักต่อกระสอบ ใช้คิดเศษของหน่วยเลท
+// ทั้งสองแบบ: ยังไม่กรอก = กล่องเหลือง + ⚠  |  กรอกแล้ว = กล่องฟ้า
+// ============================================================================
+function _wpuFieldHtml(key, itemId, i, label, value, onInputJs){
+  const filled = toNum(value) > 0;
+  const bid = key + '_' + itemId + '_' + i;
+  return '<span id="se_wpubox_' + bid + '" style="display:inline-flex;align-items:center;gap:7px;flex-wrap:wrap;'
+    + _seWpuBoxStyle(filled) + ';border-radius:6px;padding:6px 11px">'
+    + '<span id="se_wpulbl_' + bid + '" style="font-size:12px;font-weight:600;color:'
+    + (filled ? 'var(--ink-2)' : '#8a5a00') + ';white-space:nowrap">'
+    + (filled ? '' : '\u26a0 ') + escHtml(label) + '</span>'
+    + '<input class="se-wpu" id="se_wpuinp_' + bid + '" type="number" min="0" step="any" placeholder="เช่น 50"'
+    + ' value="' + escHtml(numAttr(value)) + '"'   // [Fix V11-1]
+    + ' style="width:86px;padding:6px 9px;border:1px solid ' + (filled ? '#cfe0f2' : '#e0b870')
+    + ';border-radius:4px;font-size:13px;font-weight:600;background:#fff;font-family:inherit"'
+    + ' oninput="' + onInputJs + '">'
+    + '<span id="se_wpuhint_' + bid + '" style="font-size:11px;color:#8a5a00">'
+    + (filled ? '' : 'ต้องกรอก ไม่งั้นยอด กก. จะคิดไม่ได้') + '</span>'
+    + '</span>';
+}
+
 // [WPU-3] อัปเดตสีกล่องแบบ "ไม่วาด input ใหม่" — แก้บั๊กเคอร์เซอร์เด้งกลับตัวแรก
 //
 // เดิมตอนพิมพ์ ผมวาดกล่องทั้งก้อนใหม่แล้วพยายามคืนตำแหน่งเคอร์เซอร์ด้วย selectionStart
@@ -4372,24 +4426,29 @@ function _seWpuBoxStyle(filled){
 // ผลคือพิมพ์ได้ทีละตัวแล้วเด้งกลับหน้าสุดทุกครั้ง
 //
 // ทางแก้ที่ถูกคือ "อย่าแตะ input เลย" เปลี่ยนแค่สีกรอบกับข้อความรอบ ๆ
-function _seSyncWpu(itemId, i){
-  const st = (window._seStocks[itemId] || [])[i];
-  if(!st) return;
-  const bid  = itemId + '_' + i;
+function _seSyncWpu(key, itemId, i, label, value){
+  const bid  = key + '_' + itemId + '_' + i;
   const box  = document.getElementById('se_wpubox_' + bid);
+  if(!box) return;   // [Fix V11-2] อาจถูกเรียกหลังออกจากหน้านี้ไปแล้ว
   const lbl  = document.getElementById('se_wpulbl_' + bid);
   const inp  = document.getElementById('se_wpuinp_' + bid);
   const hint = document.getElementById('se_wpuhint_' + bid);
-  if(!box) return;   // [Fix V11-2] อาจถูกเรียกหลังออกจากหน้านี้ไปแล้ว
-  const filled = toNum(st.kgPerUnit) > 0;
+  const filled = toNum(value) > 0;
   box.setAttribute('style', 'display:inline-flex;align-items:center;gap:7px;flex-wrap:wrap;'
     + _seWpuBoxStyle(filled) + ';border-radius:6px;padding:6px 11px');
   if(lbl){
     lbl.style.color = filled ? 'var(--ink-2)' : '#8a5a00';
-    lbl.textContent = (filled ? '' : '\u26a0 ') + (_WPU_UNITS[st.unit] || '');
+    lbl.textContent = (filled ? '' : '\u26a0 ') + (label || '');
   }
   if(inp)  inp.style.borderColor = filled ? '#cfe0f2' : '#e0b870';
   if(hint) hint.textContent = filled ? '' : 'ต้องกรอก ไม่งั้นยอด กก. จะคิดไม่ได้';
+}
+
+// อัปเดตกล่องน้ำหนักต่อหน่วยของแถว (key 'u')
+function _seSyncWpuUnit(itemId, i){
+  const st = (window._seStocks[itemId] || [])[i];
+  if(!st) return;
+  _seSyncWpu('u', itemId, i, _WPU_UNITS[st.unit] || '', st.kgPerUnit);
 }
 
 // วาดช่องใต้แถวใหม่ทั้งก้อน — ใช้เฉพาะตอน "เปลี่ยนหน่วย" เท่านั้น ไม่ใช่ตอนพิมพ์
@@ -4716,7 +4775,7 @@ async function saveStockItem(itemId, btnEl){
         }
         s.kgPerUnit = String(f.kgPerLot);
         // [LOT-2] เศษเป็นลูกต้องรู้ก่อนว่า 1 ลูกหนักเท่าไหร่ ไม่งั้นยอด กก. จะขาดไปเงียบ ๆ
-        if(toNum(s.lotRem) > 0 && _lotRemUOf(s) === 'luk' && !(_lotRemKgEach(r.no, f) > 0)){
+        if(toNum(s.lotRem) > 0 && _lotRemUOf(s) === 'luk' && !(_lotRemKgEach(r.no, f, s) > 0)){
           showToast('สินค้านี้ยังไม่ได้ตั้ง "นน./หน่วย" ในชีต จึงคิดเศษเป็นกระสอบไม่ได้ — ' +
                     'ใส่น้ำหนักต่อกระสอบในชีตแล้วกด 🔄 หรือเปลี่ยนหน่วยเศษเป็น กก.', 'error');
           return;
