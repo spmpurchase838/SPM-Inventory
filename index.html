@@ -1109,7 +1109,7 @@ tbody tr:hover {
 // GitHub Pages เก็บแคชไฟล์ HTML ไว้ที่ CDN ราว 10 นาที และเบราว์เซอร์เก็บซ้ำอีกชั้น
 // หลังอัปโหลดไฟล์ใหม่จึงมักยังเห็นของเก่าอยู่ — เดิมไม่มีทางรู้เลยว่าเห็นเวอร์ชันไหน
 // ถ้าเลขที่แสดงไม่ตรงกับไฟล์ที่เพิ่งอัปโหลด ให้กด Ctrl+Shift+R (หรือ Cmd+Shift+R บน Mac)
-const APP_VERSION = 'v46';
+const APP_VERSION = 'v47';
 const APP_BUILD   = '14 ก.ย. 2569';
 (function _paintVersion(){
   const set = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
@@ -4799,13 +4799,24 @@ async function saveStockItem(itemId, btnEl){
     //   1. ต้องเป็นโหมด add — โหมด replace ("นับสต็อกใหม่") ต้องเขียนทับทั้งวันตามเดิม
     //   2. วันนี้ต้องไม่มีของค้างส่ง — ถ้ามี ต้องใช้ saveDaily ทั้งวันเพื่อเคลียร์ของค้างให้ครบ
     //      (ถ้าดันไปต่อท้ายแล้ว _clearPending ของค้างจะถูกทิ้งไปเงียบ ๆ ทั้งที่ยังไม่เคยขึ้นชีต)
-    const _useAppend = (mode !== 'replace') && !_isDayDirty(dateStr);
+    // [FAST-2] โหมด "บวกเพิ่ม" ไม่ให้ผู้ใช้รอเน็ตทุกกรณี
+    //   วันนี้ยังไม่มีของค้าง -> ส่งเบื้องหลังด้วย appendDaily (เร็วสุด)
+    //   วันนี้มีของค้างอยู่    -> ทำเครื่องหมายค้างส่งแล้วปล่อยให้ retryPending
+    //                            merge + ส่งทั้งวันให้เอง ก็ยังอยู่เบื้องหลังเหมือนกัน
+    // เหลือแค่โหมด "แทนที่ยอดเดิม" ที่ยังรอผล เพราะมันเขียนทับทั้งวัน ต้องแน่ใจก่อนปล่อย
+    const _isAdd = (mode !== 'replace');
+    const _useAppend = _isAdd && !_isDayDirty(dateStr);
     let syncOk = true, syncErrMsg = '';
+    let _bgPayload = null;   // [FAST-1] payload ที่จะส่งเบื้องหลังหลังปล่อยฟอร์มแล้ว
+    let _bgRetry = false;    // [FAST-2] true = ฝากให้ retryPending ส่งทั้งวันให้
     await withDayWriteLock(async () => {
       // [FIX-A12] ดึงของวันนี้จากชีตมารวมก่อน กันทับข้อมูลที่คนอื่นเพิ่งบันทึกไป
       // ทางต่อท้ายไม่ต้องทำขั้นนี้ เพราะไม่มีการลบ/เขียนทับแถวเดิมเลย
       let _merged = {ok: true, added: 0};
-      if(!_useAppend){
+      // [FAST-2] เฉพาะโหมดแทนที่ยอดเดิมที่ต้อง merge ก่อน (และต้องรอผล)
+      // โหมดบวกเพิ่มไม่ต้อง เพราะ appendDaily ไม่ทับของใคร
+      // ส่วนกรณีที่ต้องส่งทั้งวัน retryPending จะ merge ให้เองก่อนส่งอยู่แล้ว
+      if(!_isAdd){
         _merged = await _mergeServerDay(todayRecord);
         if(_merged.added) showToast('ℹ️ พบข้อมูลใหม่จากเพื่อนร่วมงาน ' + _merged.added + ' แถว — รวมให้แล้ว');
       }
@@ -4869,6 +4880,14 @@ async function saveStockItem(itemId, btnEl){
           recorded_by: todayRecord.recorded_by || _who,   // [Fix V11-4] ไม่ทับชื่อคนที่บันทึกก่อนหน้า
           entries: todayRecord.entries,
         };
+        // ===== [FAST-1] ทางต่อท้าย: ไม่ให้ผู้ใช้ยืนรอเน็ต =====
+        // ข้อมูลถูกเขียนลงเครื่องเรียบร้อยแล้วตั้งแต่บรรทัดบน ๆ การส่งขึ้นชีตจึงไม่จำเป็น
+        // ต้องเสร็จก่อนปล่อยฟอร์ม เก็บ payload ไว้ส่งเบื้องหลังแทน (ดูบล็อก [FAST-1] ด้านล่าง)
+        //
+        // โหมด "แทนที่ยอดเดิม" กับวันที่มีของค้าง ยังส่งแบบรอผลเหมือนเดิม
+        // เพราะสองทางนั้นเขียนทับทั้งวัน ถ้าพลาดแล้วปล่อยผ่านไปจะแกะยาก
+        if(_useAppend){ _bgPayload = payload; return; }
+        if(_isAdd){ _bgRetry = true; return; }   // [FAST-2] ฝาก retryPending ส่งทั้งวันเบื้องหลัง
         const res = await fetchTO(GS_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain' },
@@ -4913,7 +4932,10 @@ async function saveStockItem(itemId, btnEl){
 
     // [BugFix #7] แสดงข้อความ toast ให้ตรงกับ mode จริง (บวกเพิ่ม vs แทนที่ยอด)
     const _toastLabel = (mode === 'replace') ? 'แทนที่ยอด' : 'บวกเพิ่ม';
-    if(syncOk){
+    if(_bgPayload || _bgRetry){
+      // [FAST-1] เขียนลงเครื่องแล้ว กำลังส่งขึ้นชีตอยู่เบื้องหลัง — ไม่ต้องรอ
+      showToast('✅ ' + _toastLabel + ' ' + (r.desc||r.no) + ' เรียบร้อย (กำลังส่งขึ้น Sheet)');
+    } else if(syncOk){
       showToast('✅ ' + _toastLabel + ' ' + (r.desc||r.no) + ' เรียบร้อย (sync Sheet แล้ว)');
     } else {
       showToast('⚠️ เก็บไว้ในเครื่องแล้ว แต่ยังไม่ขึ้น Sheet: ' + syncErrMsg + ' — ระบบจะลองส่งใหม่ให้เอง อย่าเพิ่งล้างข้อมูลเบราว์เซอร์', 'error');
@@ -4942,7 +4964,44 @@ async function saveStockItem(itemId, btnEl){
     window._seSaving[itemId] = false;
     _setBtnState(false);
     _showSavingOverlay(false);
+    // ===== [FAST-1/2] ส่งขึ้นชีตเบื้องหลัง หลังปล่อยฟอร์มแล้ว =====
+    // ผู้ใช้กรอกตัวถัดไปต่อได้ทันที ไม่ต้องยืนรอ Apps Script ตอบกลับ
+    if(_bgPayload){
+      _bgSendStock(_bgPayload, dateStr);
+    } else if(_bgRetry){
+      _markPending(dateStr);
+      setTimeout(() => retryPending(true), 0);
+    }
   }
+}
+
+// [FAST-1] ส่ง payload ขึ้นชีตเบื้องหลัง
+//
+// ทำเครื่องหมาย "ค้างส่ง" ไว้ก่อนยิง แล้วค่อยเคลียร์เมื่อสำเร็จ
+// จำเป็นมาก เพราะถ้าผู้ใช้ปิดแท็บระหว่างที่ยังส่งไม่เสร็จ ข้อมูลจะอยู่แต่ในเครื่อง
+// ถ้าไม่ได้ทำเครื่องหมายไว้ จะไม่มีใครรู้ว่าต้องส่งซ้ำ -> หายจากชีตแบบเงียบ ๆ
+// พอทำเครื่องหมายไว้ retryPending จะเก็บให้เองในรอบถัดไปหรือรอบเปิดแอปครั้งหน้า
+//
+// ใช้คิวเดียวกับการบันทึก (withDayWriteLock) การส่งจึงเรียงทีละรายการเสมอ ไม่ชนกัน
+async function _bgSendStock(payload, dateStr){
+  _markPending(dateStr);
+  await withDayWriteLock(async () => {
+    try {
+      const res = await fetchTO(GS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(payload),
+        redirect: 'follow',
+      });
+      const json = await readJson(res);
+      if(!json.ok) throw new Error(json.error || 'ส่งข้อมูลไม่สำเร็จ');
+      _clearPending(dateStr);
+    } catch(e) {
+      // ไม่เคลียร์ค้างส่ง — ปล่อยให้ retryPending ลองใหม่ให้เอง
+      showToast('⚠️ ยังส่งขึ้น Sheet ไม่สำเร็จ: ' + e.message +
+                ' — ข้อมูลอยู่ในเครื่องแล้ว ระบบจะลองส่งใหม่ให้เอง', 'error');
+    }
+  });
 }
 
 function renderStockView(container){
